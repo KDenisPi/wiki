@@ -15,6 +15,7 @@
 
 #include "prop_dict.h"
 #include "item_reader.h"
+#include "item_parser.h"
 
 using namespace std;
 
