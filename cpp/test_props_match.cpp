@@ -12,8 +12,14 @@
 #include <stdlib.h>
 #include <iostream>
 #include <string>
+#include <memory>
+
 #include "rapidjson/document.h"
 #include "smallthings.h"
+
+#include "prop_dict.h"
+#include "item_reader.h"
+#include "item_parser.h"
 
 #define MAX_LINE_LENGTH 1024*1024*5 //5Mb
 
@@ -27,66 +33,40 @@ int main (int argc, char* argv[])
 
     char buffer[MAX_LINE_LENGTH]; // Declare a character array (buffer) to store the line
 
-    int fd_prop = open(argv[1], O_RDONLY);
-    if(fd_prop == -1){
-        std::cout << "Error opening file " << argv[1] << std::endl; // Print an error message
-        exit(status); // Exit the program with an error status
+    std::unique_ptr<wiki::Properties> ptr_props = std::make_unique<wiki::Properties>();
+    if(!ptr_props->load(std::string(argv[1]))){
+        exit(status);
     }
 
-    size_t b_read = b_read = read(fd_prop, buffer, MAX_LINE_LENGTH-1);
-    if(b_read == -1){
-        std::cout << "Error reading file " << argv[1] << std::endl; // Print an error message
-    }
-    else{
-        buffer[b_read] = 0x00;
+    std::cout << argv[1] << " Props count: " << ptr_props->MemberCount() << std::endl;
 
-        rapidjson::Document d_prop;
-        d_prop.Parse(buffer);
-        if(d_prop.HasParseError()){
-            auto err = d_prop.GetParseError();
-            std::cout << argv[1] << " Parse error: " << std::to_string(err) << " Offset: " << d_prop.GetErrorOffset() << std::endl;
-        }
 
-        std::cout << argv[1] << " Props count: " << d_prop.MemberCount() << std::endl;
+    std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
+    if(ptr_reader->init(std::string(argv[2]))){
+        if(ptr_reader->next(buffer, MAX_LINE_LENGTH)){
+            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>();
+            if(ptr_item->load(buffer)){
+                auto ptr_item_doc = ptr_item->get();
+                auto v_claims = ptr_item_doc->FindMember("claims");
 
-        // Open the properties file in read mode ("r")
-        FILE *fp_prop = fopen(argv[2], "r");
-        // Check if the file was opened successfully
-        if (fp_prop == NULL) {
-            std::cout << "Error reading file " << argv[1] << std::endl; // Print an error message
-        }
-        else{
-            if(fgets(buffer, MAX_LINE_LENGTH, fp_prop) != NULL) {
-                rapidjson::Document d_item;
-                d_item.Parse(buffer);
+                if(v_claims != ptr_item_doc->MemberEnd()){
+                    std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: "
+                        << v_claims->value.MemberCount() << std::endl;
 
-                if(d_item.HasParseError()){
-                    auto err = d_item.GetParseError();
-                    std::cout << argv[2] << " Parse error: " << std::to_string(err) << " Offset: " << d_item.GetErrorOffset() << std::endl;
-                }
-                else{
-                    auto v_claims = d_item.FindMember("claims");
-                    if(v_claims != d_item.MemberEnd()){
-                        std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: "
-                            << v_claims->value.MemberCount() << std::endl;
+                    auto ptr_props_doc = ptr_props->get();
 
-                        for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
-                            auto prop = d_prop.FindMember(cl_v->name.GetString());
-                            std::cout << "Name: " << cl_v->name.GetString() << " "
-                                << (prop!=d_prop.MemberEnd() ? prop->value[0].GetString() : " Unknown ") << std::endl;
-                        }
+                    for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
+                        auto prop = ptr_props_doc->FindMember(cl_v->name.GetString());
+                        std::cout << "Name: " << cl_v->name.GetString() << " "
+                            << (prop!=ptr_props_doc->MemberEnd() ? prop->value[0].GetString() : " Unknown ") << std::endl;
                     }
-                    else
-                        std::cout << "No such member: " << "claims" << std::endl;
                 }
+                else
+                    std::cout << "No such member: " << "claims" << std::endl;
             }
             status = EXIT_SUCCESS;
         }
-
-        fclose(fp_prop);
     }
-
-    close(fd_prop);
 
     exit(status);
 }

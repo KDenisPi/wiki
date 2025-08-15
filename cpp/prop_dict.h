@@ -16,6 +16,8 @@
 #include <tuple>
 #include <map>
 #include <vector>
+#include <memory>
+
 #include "rapidjson/document.h"
 
 #include "defines.h"
@@ -33,8 +35,18 @@ using pInfo = std::tuple<pID, std::string, std::string>;
 
 class Properties{
 public:
-    Properties() {}
-    virtual ~Properties() { d_prop.Clear();}
+    Properties() {
+        ptr_prop = std::make_shared<rapidjson::Document>();
+    }
+
+    /**
+     * @brief Destroy the Properties object
+     *
+     */
+    virtual ~Properties() {
+        if(ptr_prop)
+            ptr_prop.reset();
+    }
 
     bool load(const std::string& filename);
 
@@ -45,7 +57,7 @@ public:
      * @return false
      */
     bool is_loaded() const {
-        return loaded;
+        return (ptr_prop ? loaded : false);
     }
 
     /**
@@ -56,6 +68,11 @@ public:
      */
     const pInfo get(const pID& prop_id) const;
 
+    /**
+     * @brief
+     *
+     * @param v_props
+     */
     void load_important_property(std::vector<pID> v_props){
         const std::string p_unk("Unknown");
 
@@ -80,12 +97,29 @@ public:
         return (prop_important.end() != prop_important.find(prop_id));
     }
 
+    /**
+     * @brief
+     *
+     * @return size_t
+     */
+    size_t MemberCount() const {
+        return (is_loaded() ? ptr_prop->MemberCount() : 0);
+    }
+
+    /**
+     * @brief
+     *
+     * @return * const std::shared_ptr<rapidjson::Document>
+     */
+    const std::shared_ptr<rapidjson::Document> get(){
+        return ptr_prop;
+    }
+
 protected:
     bool loaded = false;
     char buffer[MAX_LINE_LENGTH]; // Declare a character array (buffer) to store the line
 
-    rapidjson::Document d_prop;
-
+    std::shared_ptr<rapidjson::Document> ptr_prop;
     std::map<pID, std::string> prop_important;
 };
 

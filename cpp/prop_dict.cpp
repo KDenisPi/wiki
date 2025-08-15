@@ -39,10 +39,10 @@ bool Properties::load(const std::string& filename){
     else{
         buffer[b_read] = 0x00;
 
-        d_prop.Parse(buffer);
-        if(d_prop.HasParseError()){
-            auto err = d_prop.GetParseError();
-            std::cout << filename << " Parse error: " << std::to_string(err) << " Offset: " << d_prop.GetErrorOffset() << std::endl;
+        ptr_prop->Parse(buffer);
+        if(ptr_prop->HasParseError()){
+            auto err = ptr_prop->GetParseError();
+            std::cout << filename << " Parse error: " << std::to_string(err) << " Offset: " << ptr_prop->GetErrorOffset() << std::endl;
         }
         else{
             loaded = true;
@@ -60,8 +60,8 @@ bool Properties::load(const std::string& filename){
  * @return const p_info
  */
 const pInfo Properties::get(const pID& prop_id) const{
-    auto prop = d_prop.FindMember(prop_id.c_str());
-    if(d_prop.MemberEnd() != prop){
+    auto prop = ptr_prop->FindMember(prop_id.c_str());
+    if(ptr_prop->MemberEnd() != prop){
         return pInfo(prop_id, std::string(prop->value[0].GetString()), std::string(prop->value[1].GetString()));
     }
 

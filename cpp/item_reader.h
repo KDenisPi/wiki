@@ -29,14 +29,22 @@ public:
         close();
     }
 
+    /**
+     * @brief
+     *
+     * @param filename
+     * @return true
+     * @return false
+     */
     bool init(const std::string filename){
-        FILE *fp_prop = fopen(filename.c_str(), "r");
+        fp_prop = fopen(filename.c_str(), "r");
         // Check if the file was opened successfully
         if (fp_prop == NULL) {
             std::cout << "Error reading file " << filename << " Error: " << errno << std::endl; // Print an error message
             return false;
         }
 
+        return true;
     }
 
     /**
@@ -55,6 +63,10 @@ public:
         return false;
     }
 
+    /**
+     * @brief
+     *
+     */
     void close(){
         if(fp_prop!= nullptr){
             fclose(fp_prop);
