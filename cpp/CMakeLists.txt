@@ -10,6 +10,8 @@ set(VER_MIN 1)
 set(CMAKE_BIULD_TYPE Debug)
 set(WPARSER_LIBS  ${EXTRA_LIBS})
 
+#https://github.com/Tencent/rapidjson.git
+
 include_directories(BEFORE
    ${PROJECT_SOURCE_DIR}/../thparty/rapidjson/include
 )
