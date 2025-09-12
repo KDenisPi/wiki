@@ -13,6 +13,9 @@
 #define WIKI_ITEM_READER_H_
 
 #include <string>
+#include <ostream>
+#include <iostream>
+
 #include "defines.h"
 
 namespace wiki {
@@ -68,11 +71,16 @@ public:
      *
      */
     void close(){
-        if(fp_prop!= nullptr){
+        if(fp_prop != nullptr){
             fclose(fp_prop);
             fp_prop = nullptr;
         }
     }
+
+    const bool is_ready() const{
+        return (fp_prop != nullptr);
+    }
+
 private:
     std::string items_file;
     FILE *fp_prop = nullptr;
