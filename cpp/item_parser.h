@@ -81,7 +81,27 @@ public:
      */
     void worker(){
         std::cout << "Parse started. Index: " << this->_index << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        auto fn_ready = [&]() {
+            return (_sync->load() == 1);
+        };
+
+        std::unique_lock<std::mutex> lk(this->cv_m);
+        for(;;){
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+            std::cout << "Index: " << this->_index << " Value: " << _sync->load() << std::endl;
+
+            this->cv.wait(lk, fn_ready);
+
+            std::cout << "Data received. Index: " << this->_index << std::endl;
+
+            _sync->store(0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            break;
+        }
+
+        //std::this_thread::sleep_for(std::chrono::seconds(2));
         std::cout << "Parse finished. Index: " << this->_index << std::endl;
     }
 

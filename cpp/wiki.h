@@ -48,7 +48,7 @@ public:
      * @brief Parser theread synchronization
      *
      */
-    std::atomic_int threads_vars[MAX_LINE_LENGTH] = {0,0};
+    std::atomic_int threads_vars[max_threads] = {0,0};
 
     /**
      * @brief Read buffers
