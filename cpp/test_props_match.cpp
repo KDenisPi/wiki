@@ -21,8 +21,6 @@
 #include "item_reader.h"
 #include "item_parser.h"
 
-#define MAX_LINE_LENGTH 1024*1024*5 //5Mb
-
 int main (int argc, char* argv[])
 {
     int status = EXIT_FAILURE;
@@ -44,7 +42,8 @@ int main (int argc, char* argv[])
     std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
     if(ptr_reader->init(std::string(argv[2]))){
         if(ptr_reader->next(buffer, MAX_LINE_LENGTH)){
-            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>();
+            std::atomic_int sync;
+            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync);
             if(ptr_item->load(buffer)){
                 auto ptr_item_doc = ptr_item->get();
                 auto v_claims = ptr_item_doc->FindMember("claims");

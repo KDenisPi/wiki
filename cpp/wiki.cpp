@@ -9,11 +9,10 @@
  *
  */
 
+#include <chrono>
 #include "wiki.h"
 
 namespace wiki {
-
-std::atomic_int WiKi::threads[WiKi::max_threads] = {0,0,0,0,0};
 
 /**
  * @brief
@@ -22,38 +21,51 @@ std::atomic_int WiKi::threads[WiKi::max_threads] = {0,0,0,0,0};
 void WiKi::worker(){
 
     if(!reader.is_ready()){
+        std::cout << "Data reader is not ready" << std::endl;
         return;
     }
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    std::cout << "Main worker finished" << std::endl;
+    return;
+
 
     auto fn_all_done = [&]() {
         int count = 0;
         for(int i = 0; i < this->max_threads; i++){
-            count += this->threads[i].load();
+            count += this->threads_vars[i].load();
         }
-        return (count == 0);
+        return (this->is_finish() || (count == 0));
     };
 
+
     bool last_read_success = true;
+    std::unique_lock<std::mutex> lk(this->cv_m);
 
     for(;;){
 
         for(int i = 0; i < this->max_threads; i++){
-            last_read_success = this->reader.next(static_cast<char*>(&buffers[i][0]), max_buffer_size);
-            if(!last_read_success)
+            last_read_success = this->reader.next(static_cast<char*>(buffers[i].get()), max_buffer_size);
+            if(!last_read_success){
+                std::cout << "Read error" << std::endl;
                 break;
+            }
 
-            this->threads->fetch_add(1);
+            this->threads_vars->fetch_add(1);
         }
 
-        {
-            std::unique_lock<std::mutex> lk(this->cv_m);
-            this->cv.wait(lk, fn_all_done);
+        if(!last_read_success && fn_all_done()){
+            std::cout << "Read error and nothing to do" << std::endl;
+            break;
         }
 
-        if(!last_read_success)
+        this->cv.wait(lk, fn_all_done);
+
+        if(!last_read_success || is_finish())
             break;
     }
 
+    std::cout << "Main worker finished" << std::endl;
 }
 
 }

@@ -13,13 +13,19 @@
 #define WIKI_ITEM_PARSER_H_
 
 #include <memory>
+#include <atomic>
+#include <condition_variable>
+#include <thread>
+#include <mutex>
+#include <chrono>
+
 #include "rapidjson/document.h"
 
 namespace wiki {
 
 class ItemParser{
 public:
-    ItemParser() {
+    ItemParser(const int index, std::atomic_int* sync) : _index(index), _sync(sync) {
     }
 
     virtual ~ItemParser() {
@@ -69,9 +75,23 @@ public:
         return ptr_doc;
     }
 
-private:
-    std::shared_ptr<rapidjson::Document> ptr_doc;
+    /**
+     * @brief
+     *
+     */
+    void worker(){
+        std::cout << "Parse started. Index: " << this->_index << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        std::cout << "Parse finished. Index: " << this->_index << std::endl;
+    }
 
+private:
+    std::condition_variable cv;
+    std::mutex cv_m;
+
+    std::atomic_int* _sync;
+    std::shared_ptr<rapidjson::Document> ptr_doc;
+    int _index = -1;
 };
 
 } //namespace

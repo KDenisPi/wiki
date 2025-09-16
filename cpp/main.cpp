@@ -13,24 +13,33 @@
 #include <iostream>
 #include <memory>
 
-#include "prop_dict.h"
-#include "item_reader.h"
-#include "item_parser.h"
+//#include "prop_dict.h"
+#include "wiki.h"
 
 using namespace std;
 
 int main (int argc, char* argv[])
 {
     if(argc < 2){
-        std::cout << "Missing parameters." << std::endl << "wpars prop_dictionary.json" << std::endl;
+        std::cout << "Missing parameters." << "wpars data.json" << std::endl;
         exit(EXIT_FAILURE);
     }
 
+    /*
     std::shared_ptr<wiki::Properties> ptr_props = std::make_shared<wiki::Properties>();
-
     if(!ptr_props->load(std::string(argv[1]))){
         exit(EXIT_FAILURE);
     }
+    */
+
+    wiki::WiKi wk;
+
+    if(!wk.load_source(std::string(argv[1]))){
+        std::cout << "Could not load source file" << std::string(argv[1]) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    wk.start();
 
     exit(EXIT_SUCCESS);
 }

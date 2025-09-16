@@ -14,8 +14,7 @@
 
 namespace wiki{
 
-#define MAX_LINE_LENGTH 1024*1024*5 //5Mb
-
+#define MAX_LINE_LENGTH 1024*300
 }
 
 #endif
