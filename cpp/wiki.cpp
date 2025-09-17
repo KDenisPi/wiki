@@ -33,14 +33,12 @@ void WiKi::worker(){
         int count = 0;
         for(int i = 0; i < this->max_threads; i++){
             count += this->threads_vars[i].load();
-            std::cout << "Fn. Index: " << i << " Value: " << this->threads_vars[i].load() << std::endl;
         }
         return (this->is_finish() || (count == 0));
     };
 
+    int counter = 0;
     bool last_read_success = true;
-    std::unique_lock<std::mutex> lk(this->cv_m);
-
     for(;;){
 
         for(int i = 0; i < this->max_threads; i++){
@@ -50,26 +48,36 @@ void WiKi::worker(){
                 break;
             }
             this->threads_vars[i].fetch_add(1);
+            counter++;
         }
 
         //std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        /*
         for(int i = 0; i < this->max_threads; i++){
             std::cout << "Main. Index: " << i << " Value: " << this->threads_vars[i].load() << std::endl;
         }
+        */
 
-/*
+        while(!fn_all_done());
+
         if(!last_read_success && fn_all_done()){
-            std::cout << "Read error and nothing to do" << std::endl;
+            std::cout << "Read error: " << last_read_success << " and nothing to do:" << fn_all_done() << std::endl;
             break;
         }
-*/
-        this->cv.wait(lk, fn_all_done);
 
-        break;
-
-        if(!last_read_success || is_finish())
+        if(!last_read_success || is_finish()){
+            std::cout << "Read error: " << last_read_success << " Is finish: " << is_finish() << std::endl;
             break;
+        }
     }
+
+    std::cout << "Counter: " <<std::to_string(counter) << std::endl;
+
+    for(int i = 0; i < this->max_threads; i++){
+        parsers[i]->set_finish();
+    }
+    std::cout << "Wain for child threads" << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 
     std::cout << "Main worker finished" << std::endl;
 }

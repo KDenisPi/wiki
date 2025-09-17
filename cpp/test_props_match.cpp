@@ -43,7 +43,8 @@ int main (int argc, char* argv[])
     if(ptr_reader->init(std::string(argv[2]))){
         if(ptr_reader->next(buffer, MAX_LINE_LENGTH)){
             std::atomic_int sync;
-            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync);
+            std::shared_ptr<char> fake_buff;
+            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff);
             if(ptr_item->load(buffer)){
                 auto ptr_item_doc = ptr_item->get();
                 auto v_claims = ptr_item_doc->FindMember("claims");

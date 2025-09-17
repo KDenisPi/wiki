@@ -15,6 +15,7 @@
 #include <string>
 #include <ostream>
 #include <iostream>
+#include <string.h>
 
 #include "defines.h"
 
@@ -60,6 +61,12 @@ public:
      */
     bool next(char* buff, size_t buff_size){
         if(fgets(buff, buff_size, fp_prop) != NULL) {
+            const auto len = strlen(buff);
+            //std::cout << "Length: " << len << " Char: " << buff[len-2] << std::endl;
+            if(buff[len-1] == '\n' && buff[len-2] == ','){
+                buff[len-2] = 0;
+            }
+
             return true;
         }
 

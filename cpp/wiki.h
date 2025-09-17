@@ -40,9 +40,9 @@ public:
      * @brief Max number of parser threads
      *
      */
-    const static int max_threads = 2; //5;
+    const static int max_threads = 5; //5;
 
-    const static size_t max_buffer_size = 1024*1024;
+    const static size_t max_buffer_size = 1024*1024*5;
 
     /**
      * @brief Parser theread synchronization
@@ -67,7 +67,7 @@ public:
 
     void start(){
         for(int i = 0; i < max_threads; i++){
-            parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i]);
+            parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i]);
             threads[i] = std::thread(&ItemParser::worker, parsers[i].get());
             threads[i].detach();
         }
@@ -81,6 +81,7 @@ public:
     }
 
     void set_finish(){
+        std::unique_lock<std::mutex> lk(cv_m);
         finish = true;
     }
 
