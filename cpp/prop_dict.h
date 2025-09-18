@@ -37,6 +37,7 @@ class Properties{
 public:
     Properties() {
         ptr_prop = std::make_shared<rapidjson::Document>();
+        buffer = std::shared_ptr<char>(new char[MAX_LINE_LENGTH]);
     }
 
     /**
@@ -117,7 +118,7 @@ public:
 
 protected:
     bool loaded = false;
-    char buffer[MAX_LINE_LENGTH]; // Declare a character array (buffer) to store the line
+    std::shared_ptr<char> buffer; // Declare a character array (buffer) to store the line
 
     std::shared_ptr<rapidjson::Document> ptr_prop;
     std::map<pID, std::string> prop_important;

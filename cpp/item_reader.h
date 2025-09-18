@@ -23,6 +23,10 @@ namespace wiki {
 
 class ItemReader{
 public:
+    /**
+     * @brief Construct a new Item Reader object
+     *
+     */
     ItemReader() {}
 
     /**
@@ -66,10 +70,8 @@ public:
             if(buff[len-1] == '\n' && buff[len-2] == ','){
                 buff[len-2] = 0;
             }
-
             return true;
         }
-
         return false;
     }
 
@@ -84,6 +86,12 @@ public:
         }
     }
 
+    /**
+     * @brief
+     *
+     * @return true
+     * @return false
+     */
     const bool is_ready() const{
         return (fp_prop != nullptr);
     }

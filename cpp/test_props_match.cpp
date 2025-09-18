@@ -29,7 +29,7 @@ int main (int argc, char* argv[])
         exit(status);
     }
 
-    char buffer[MAX_LINE_LENGTH]; // Declare a character array (buffer) to store the line
+    std::shared_ptr<char> buffer = std::shared_ptr<char>(new char[MAX_LINE_LENGTH]);// Declare a character array (buffer) to store the line
 
     std::unique_ptr<wiki::Properties> ptr_props = std::make_unique<wiki::Properties>();
     if(!ptr_props->load(std::string(argv[1]))){
@@ -41,11 +41,11 @@ int main (int argc, char* argv[])
 
     std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
     if(ptr_reader->init(std::string(argv[2]))){
-        if(ptr_reader->next(buffer, MAX_LINE_LENGTH)){
+        if(ptr_reader->next(buffer.get(), MAX_LINE_LENGTH)){
             std::atomic_int sync;
             std::shared_ptr<char> fake_buff;
             std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff);
-            if(ptr_item->load(buffer)){
+            if(ptr_item->load(buffer.get())){
                 auto ptr_item_doc = ptr_item->get();
                 auto v_claims = ptr_item_doc->FindMember("claims");
 

@@ -25,10 +25,6 @@ void WiKi::worker(){
         return;
     }
 
-    //std::this_thread::sleep_for(std::chrono::seconds(3));
-    //std::cout << "Main worker finished" << std::endl;
-    //return;
-
     auto fn_all_done = [&]() {
         int count = 0;
         for(int i = 0; i < this->max_threads; i++){

@@ -14,8 +14,8 @@
 #include <string>
 #include "rapidjson/document.h"
 #include "smallthings.h"
+#include "defines.h"
 
-#define MAX_LINE_LENGTH 1024*1024*5 //5Mb
 
 int main (int argc, char* argv[])
 {

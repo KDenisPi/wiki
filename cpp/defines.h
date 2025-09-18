@@ -14,7 +14,8 @@
 
 namespace wiki{
 
-#define MAX_LINE_LENGTH 1024*300
+#define MAX_LINE_LENGTH 1024*1024*5
+#define MAX_PARSING_THREADS 5
 }
 
 #endif

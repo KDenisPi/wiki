@@ -32,14 +32,14 @@ bool Properties::load(const std::string& filename){
         return false;
     }
 
-    size_t b_read = b_read = read(fd_prop, buffer, MAX_LINE_LENGTH-1);
+    size_t b_read = b_read = read(fd_prop, buffer.get(), MAX_LINE_LENGTH-1);
     if(b_read == -1){
         std::cout << "Error reading file " << filename << " Error: " << errno << std::endl; // Print an error message
     }
     else{
-        buffer[b_read] = 0x00;
+        buffer.get()[b_read] = 0x00;
 
-        ptr_prop->Parse(buffer);
+        ptr_prop->Parse(buffer.get());
         if(ptr_prop->HasParseError()){
             auto err = ptr_prop->GetParseError();
             std::cout << filename << " Parse error: " << std::to_string(err) << " Offset: " << ptr_prop->GetErrorOffset() << std::endl;

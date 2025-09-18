@@ -90,7 +90,6 @@ public:
         };
 
         for(;;){
-            //std::cout << "Index: " << this->_index << " Value: " << _sync->load() << std::endl;
             while(!is_finish() && fn_no_data());
 
             if(is_finish()){
@@ -98,13 +97,6 @@ public:
                 break;
             }
 
-            /*
-            if(this->_index == 1){
-                std::cout << _buffer.get() << "|" << std::endl;
-            }
-            */
-
-            //std::cout << "Data received. Index: " << this->_index << std::endl;
             auto res = load(_buffer.get());
             if(!res){
                 std::cout << "Could not parse data. Index: " << this->_index << std::endl;
@@ -118,10 +110,8 @@ public:
             }
 
             _sync->store(0);
-            //std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        //std::this_thread::sleep_for(std::chrono::seconds(2));
         std::cout << "Parse finished. Index: " << this->_index << std::endl;
     }
 

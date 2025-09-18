@@ -27,6 +27,7 @@ public:
     WiKi() {
         for(int i = 0; i < max_threads; i++){
             buffers[i] = std::shared_ptr<char>(new char[max_buffer_size]);
+            threads_vars[i] = 0;
         }
     }
 
@@ -40,15 +41,19 @@ public:
      * @brief Max number of parser threads
      *
      */
-    const static int max_threads = 5; //5;
-
-    const static size_t max_buffer_size = 1024*1024*5;
+    const static int max_threads = MAX_PARSING_THREADS; //5;
 
     /**
-     * @brief Parser theread synchronization
+     * @brief Maximum size of Wiki Item
      *
      */
-    std::atomic_int threads_vars[max_threads] = {0,0};
+    const static size_t max_buffer_size = MAX_LINE_LENGTH;
+
+    /**
+     * @brief Parser thread synchronization
+     *
+     */
+    std::atomic_int threads_vars[max_threads];
 
     /**
      * @brief Read buffers
@@ -56,6 +61,10 @@ public:
      */
     std::shared_ptr<char> buffers[max_threads];
 
+    /**
+     * @brief Threads pool
+     *
+     */
     std::thread threads[max_threads];
 
     /**
@@ -65,6 +74,11 @@ public:
     void worker();
 
 
+    /**
+     * @brief
+     *
+     * @return * void
+     */
     void start(){
         for(int i = 0; i < max_threads; i++){
             parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i]);
@@ -76,23 +90,38 @@ public:
         th_main.join();
     }
 
+    /**
+     * @brief
+     *
+     * @return true
+     * @return false
+     */
     const bool is_finish() const{
         return finish;
     }
 
+    /**
+     * @brief Set the finish object
+     *
+     */
     void set_finish(){
-        std::unique_lock<std::mutex> lk(cv_m);
+        //const std::lock_guard<std::mutex> lock(cv_m);
         finish = true;
     }
 
+    /**
+     * @brief Initialize reader object
+     *
+     * @param filename
+     * @return true
+     * @return false
+     */
     bool load_source(const std::string& filename){
         return reader.init(filename);
     }
 
 private:
-    std::condition_variable cv;
     std::mutex cv_m;
-
     std::thread th_main;
 
     bool finish = false;
