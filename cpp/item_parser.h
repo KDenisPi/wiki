@@ -14,14 +14,15 @@
 
 #include <memory>
 #include <atomic>
-#include <condition_variable>
-#include <thread>
-#include <mutex>
 #include <chrono>
+#include <tuple>
 
 #include "rapidjson/document.h"
 
 namespace wiki {
+
+using doc_ptr = std::shared_ptr<rapidjson::Document>;
+using item_info = std::tuple<std::string, std::string, std::string>;
 
 class ItemParser{
 public:
@@ -74,8 +75,41 @@ public:
      *
      * @return const std::shared_ptr<rapidjson::Document>
      */
-    const std::shared_ptr<rapidjson::Document> get() {
+    const doc_ptr get() {
         return ptr_doc;
+    }
+
+    inline auto get_name(const doc_ptr& doc, const std::string& name) const {
+        auto val = doc->FindMember(name.c_str());
+        return (val == doc->MemberEnd() ? std::string() : std::string(val->value.GetString()));
+    }
+
+    inline auto get_str_value(const rapidjson::Value::ConstValueIterator& it, const std::string& name){
+        auto val = it->FindMember(name.c_str());
+        return (val == it->MemberEnd() ? std::string() : std::string(val->value.GetString()));
+    }
+
+    inline auto get_sub_name(const doc_ptr& doc, const std::string& name, const std::string& subn) const {
+        auto val = doc->FindMember(name.c_str());
+        if(val != doc->MemberEnd()){
+            auto sval = val->value.FindMember(subn.c_str());
+            if(sval != val->value.MemberEnd())
+                return std::string(sval->value.GetString());
+        }
+
+        return std::string();
+    }
+
+
+    //const rapidjson::Value::ConstValueIterator& it
+    item_info parse_item(){
+        auto doc = get();
+
+        auto id = get_name(doc, "id");
+        auto label = get_sub_name(doc, "label", "en");
+        auto descr = get_sub_name(doc, "descriptions", "en");
+
+        return std::make_tuple("", "", "");
     }
 
     /**
@@ -103,9 +137,9 @@ public:
                 //std::cout << _buffer.get() << "|" << std::endl;
             }
             else{
-                auto v_id = ptr_doc->FindMember("id");
-                if(v_id != ptr_doc->MemberEnd()){
-                    //std::cout << "Index: " << _index << " Item ID: " << v_id->value.GetString() << std::endl;
+                auto itm = parse_item();
+                if(!std::get<0>(itm).empty()){
+                    std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << std::endl;
                 }
             }
 
@@ -115,10 +149,23 @@ public:
         std::cout << "Parse finished. Index: " << this->_index << std::endl;
     }
 
+
+
+    /**
+     * @brief Set the finish object
+     *
+     * @return * void
+     */
     void set_finish(){
         finish = true;
     }
 
+    /**
+     * @brief
+     *
+     * @return true
+     * @return false
+     */
     inline const bool is_finish(){
         return finish.load();
     }
@@ -126,7 +173,7 @@ public:
 private:
     std::shared_ptr<char> _buffer;
     std::atomic_int* _sync;
-    std::shared_ptr<rapidjson::Document> ptr_doc;
+    doc_ptr ptr_doc;
     int _index = -1;
 
     std::atomic_bool finish = false;

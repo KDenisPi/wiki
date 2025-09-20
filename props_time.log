@@ -1,15 +1,60 @@
-"P31" : ["instance of","type to which this subject corresponds/belongs. Different from P279 (subclass of)"],
-"P101" : ["field of work","specialization of a person or organization"],
-"P106" : ["occupation","occupation of a person. See also \"field of work\" (Property:P101), \"position held\" (Property:P39). Not for groups of people. There, use \"field of work\" (Property:P101), \"industry\" (Property:P452), \"members have occupation\" (Property:P3989)."],
-"P136" : ["genre","creative work's genre or an artist's field of work (P101). Use main subject (P921) to relate creative works to their topic"],
-"P425" : ["field of this occupation","field corresponding to this occupation or profession (use only for occupations/professions - for people use Property:P101, for companies use P452)"],
-"P452" : ["industry","specific industry of company or organization"],
-"P569" : ["date of birth","date on which the subject was born"],
-"P570" : ["date of death","date on which the subject died"],
-"P580" : ["start time","time an entity begins to exist or a statement starts being valid"],
-"P582" : ["end time","moment when an entity ceases to exist and a statement stops being entirely valid or no longer be true"],
-"P1191" : ["date of first performance","date a work was first debuted, performed or live-broadcasted"],
-"P1464" : ["category for people born here","category item that groups people born in this place"],
-"P4647" : ["location of first performance","location where a work was first debuted, performed or broadcasted"],
-"P9899" : ["music created for","a work, event, etc. for which a musical composition was created (e.g., a play for which incidental music was composed"],
+P31; ["instance of,type to which this subject corresponds/belongs. Different from P279 (subclass of)]
+P50; [author;main creator(s) of a written work (use on works, not humans); use P2093 (author name string) when Wikidata item is unknown or does not exist]
+P98; [editor;person who checks and corrects a work (such as a book, newspaper, academic journal, etc.) to comply with a rules of certain genre. Also applies to person who establishes the text of an ancient written work or manuscript.]
+P101; [field of work,specialization of a person or organization]
+P106; [occupation,occupation of a person. See also "field of work" (Property:P101), "position held" (Property:P39). Not for groups of people. There, use "field of work" (Property:P101), "industry" (Property:P452), "members have occupation" (Property:P3989).]
+P136; [genre,creative work's genre or an artist's field of work (P101). Use main subject (P921) to relate creative works to their topic]
+
+P425; [field of this occupation,field corresponding to this occupation or profession (use only for occupations/professions - for people use Property:P101, for companies use P452)]
+P452; [industry,specific industry of company or organization]
+
+P569; [date of birth,date on which the subject was born]
+P570; [date of death,date on which the subject died]
+P571; [inception;time when an entity begins to exist; for date of official opening use P1619]
+P574; [year of publication of scientific name for taxon;year when this taxon was formally described (for animals); year when this taxon name was formally established (for plants)]
+P575; [time of discovery or invention;date or point in time when the item was discovered or invented]
+P576;dissolved, abolished or demolished date;point in time at which the subject (organisation, building) ceased to exist; see "date of official closure" (P3999) for closing a facility, "service retirement" (P730) for retiring equipment, "discontinued date" (P2669) for stopping a product]
+P577; [publication date;date or point in time when a work was first published or released]
+P580; [start time,time an entity begins to exist or a statement starts being valid]
+P582; [end time,moment when an entity ceases to exist and a statement stops being entirely valid or no longer be true]
+P585; [point in time;date something took place, existed or a statement was true; for providing time use the "refine date" property (P4241)]
+
+P729; [service entry;date or point in time on which a piece or class of equipment entered operational service]
+P730; [service retirement;date or point in time on which a piece or class of equipment was retired from operational service&nbsp;; use P2669 for end of a public service]
+P746; [date of disappearance;date or point of time a missing person was seen or otherwise known to be alive for the last time]
+
+P921; main subject;primary topic of a work
+P1191; [date of first performance,date a work was first debuted, performed or live-broadcasted]
+
+P1317; [floruit;date when the person was known to be active or alive, when birth or death not documented]
+P1319; [earliest date;earliest date at which an event could have happened. Use as qualifier for other date properties]
+P1326; [latest date;latest possible time that something could have occurred. Use as qualifier for other date properties]
+
+P1464; [category for people born here,category item that groups people born in this place]
+P1619; [date of official opening;date or point in time a place, organization, or event officially opened]
+
+P2093; [author name string;stores unspecified author or editor name for publications; use if Wikidata item for author (P50) or editor (P98) does not exist or is not known. Do not use both.]
+P2669; []
+P2754; [production date;period of active production of (creative) work; the only date stated should refer to end of production; production starts after pre-production (planning) and is followed by publication date (P577); in general cases, use inception (P571)]
+P2913; [date depicted;date represented in a work (for narrative works use P2408)]
+
+P3150; [birthday;item for day and month on which the subject was born. Used when full "date of birth" (P569) isn't known.]
+P3989; [members have occupation;some or all members of this group share the occupation]
+
+P3999; [date of official closure;date of official closure of a building or event]
+
+P4241; []
+P4602; [date of burial or cremation;date on which the person was buried or cremated soon after death]
+P4647; [location of first performance,location where a work was first debuted, performed or broadcasted]
+
+P5204; [date of commercialization;date when a product was first commercialized]
+
+P6949; [announcement date;time of the first public presentation of a subject by the creator, of information by the media]
+
+P7124; [date of the first one;qualifier: when the first element of a quantity appeared/took place]
+P7125; [date of the latest one;qualifier: when the latest element of a quantity appeared/took place]
+
+P9899; [music created for,a work, event, etc. for which a musical composition was created (e.g., a play for which incidental music was composed]
+P10135; [recording date;the date when a recording was made]
+P10673; [debut date;date when a person or group is considered to have "debuted"]
 

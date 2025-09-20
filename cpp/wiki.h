@@ -19,11 +19,16 @@
 #include "defines.h"
 #include "item_reader.h"
 #include "item_parser.h"
+#include "prop_dict.h"
 
 namespace wiki {
 
 class WiKi{
 public:
+    /**
+     * @brief Construct a new WiKi object
+     *
+     */
     WiKi() {
         for(int i = 0; i < max_threads; i++){
             buffers[i] = std::shared_ptr<char>(new char[max_buffer_size]);
@@ -32,7 +37,7 @@ public:
     }
 
     /**
-     * @brief Destroy the Wi Ki object
+     * @brief Destroy the WiKi object
      *
      */
     virtual ~WiKi() {}
@@ -120,6 +125,25 @@ public:
         return reader.init(filename);
     }
 
+    /**
+     * @brief
+     *
+     * @param filename
+     * @return true
+     * @return false
+     */
+    bool load_properties(const std::string& filename){
+        const bool res =  props.load(filename);
+        if(rand){
+            std::vector<pID> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
+                 "P570", "P577", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
+                "P4647", "P9899", "P10673"};
+
+            props.load_important_property(v_props);
+        }
+        return res;
+    }
+
 private:
     std::mutex cv_m;
     std::thread th_main;
@@ -128,6 +152,7 @@ private:
 
     std::shared_ptr<ItemParser> parsers[max_threads];
     ItemReader reader;
+    Properties props;
 
 };
 
