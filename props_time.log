@@ -22,6 +22,7 @@ P585; [point in time;date something took place, existed or a statement was true;
 P729; [service entry;date or point in time on which a piece or class of equipment entered operational service]
 P730; [service retirement;date or point in time on which a piece or class of equipment was retired from operational service&nbsp;; use P2669 for end of a public service]
 P746; [date of disappearance;date or point of time a missing person was seen or otherwise known to be alive for the last time]
+P793; [significant event;significant or notable events associated with the subject]
 
 P921; main subject;primary topic of a work
 P1191; [date of first performance,date a work was first debuted, performed or live-broadcasted]

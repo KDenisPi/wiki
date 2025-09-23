@@ -30,10 +30,14 @@ public:
      *
      */
     WiKi() {
+        props = std::make_shared<Properties>();
+
         for(int i = 0; i < max_threads; i++){
             buffers[i] = std::shared_ptr<char>(new char[max_buffer_size]);
             threads_vars[i] = 0;
         }
+
+        load_important_properties();
     }
 
     /**
@@ -86,7 +90,7 @@ public:
      */
     void start(){
         for(int i = 0; i < max_threads; i++){
-            parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i]);
+            parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i], props);
             threads[i] = std::thread(&ItemParser::worker, parsers[i].get());
             threads[i].detach();
         }
@@ -133,15 +137,16 @@ public:
      * @return false
      */
     bool load_properties(const std::string& filename){
-        const bool res =  props.load(filename);
-        if(rand){
-            std::vector<pID> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
-                 "P570", "P577", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
-                "P4647", "P9899", "P10673"};
-
-            props.load_important_property(v_props);
-        }
+        const bool res =  props->load(filename);
         return res;
+    }
+
+    void load_important_properties(){
+        std::vector<pID> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
+                "P570", "P571", "P577", "P585", "P793", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
+            "P4647", "P9899", "P10673"};
+
+        props->load_important_property(v_props);
     }
 
 private:
@@ -151,8 +156,9 @@ private:
     bool finish = false;
 
     std::shared_ptr<ItemParser> parsers[max_threads];
+    std::shared_ptr<Properties> props;
+
     ItemReader reader;
-    Properties props;
 
 };
 

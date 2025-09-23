@@ -14,8 +14,8 @@
 
 #include <string>
 #include <tuple>
-#include <map>
 #include <vector>
+#include <algorithm>
 #include <memory>
 
 #include "rapidjson/document.h"
@@ -76,15 +76,8 @@ public:
      */
     void load_important_property(std::vector<pID> v_props){
         const std::string p_unk("Unknown");
-
-        for(auto prop : v_props){
-            if(is_loaded()){
-                auto [p_id, p_label, p_descr] = get(prop);
-                prop_important[prop] = (p_id.empty() ? p_unk : p_label);
-            }
-            else
-                prop_important[prop] = p_unk;
-        }
+        prop_important.swap(v_props);
+        std::sort(prop_important.begin(), prop_important.end());
     }
 
     /**
@@ -95,7 +88,7 @@ public:
      * @return false
      */
     bool is_important_property(const pID& prop_id) const {
-        return (prop_important.end() != prop_important.find(prop_id));
+        return (std::find(prop_important.begin(), prop_important.end(), prop_id) != prop_important.end());
     }
 
     /**
@@ -121,7 +114,7 @@ protected:
     std::shared_ptr<char> buffer; // Declare a character array (buffer) to store the line
 
     std::shared_ptr<rapidjson::Document> ptr_prop;
-    std::map<pID, std::string> prop_important;
+    std::vector<pID> prop_important;
 };
 
 }//namespace wiki

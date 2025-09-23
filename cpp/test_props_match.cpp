@@ -38,13 +38,22 @@ int main (int argc, char* argv[])
 
     std::cout << argv[1] << " Props count: " << ptr_props->MemberCount() << std::endl;
 
+    std::shared_ptr<wiki::Properties> props = std::make_shared<wiki::Properties>();
+    std::vector<std::string> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
+            "P570", "P571", "P577", "P585", "P793", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
+        "P4647", "P9899", "P10673"};
+
+    props->load_important_property(v_props);
+
+    auto p_found = props->is_important_property("P571");
+    std::cout << " P571 Found: " << p_found << std::endl;
 
     std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
     if(ptr_reader->init(std::string(argv[2]))){
         if(ptr_reader->next(buffer.get(), MAX_LINE_LENGTH)){
             std::atomic_int sync;
             std::shared_ptr<char> fake_buff;
-            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff);
+            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, props);
             if(ptr_item->load(buffer.get())){
                 auto ptr_item_doc = ptr_item->get();
                 auto v_claims = ptr_item_doc->FindMember("claims");
@@ -57,8 +66,13 @@ int main (int argc, char* argv[])
 
                     for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
                         auto prop = ptr_props_doc->FindMember(cl_v->name.GetString());
-                        std::cout << "Name: " << cl_v->name.GetString() << " "
-                            << (prop!=ptr_props_doc->MemberEnd() ? prop->value[0].GetString() : " Unknown ") << std::endl;
+                        const auto prop_name = std::string(cl_v->name.GetString());
+
+                        if(props->is_important_property(prop_name)){
+                            std::cout << "Name: " << prop_name << " "
+                                << (prop!=ptr_props_doc->MemberEnd() ? prop->value[0].GetString() : " Unknown ") << " Imp: "
+                                << props->is_important_property(prop_name) << std::endl;
+                        }
                     }
                 }
                 else

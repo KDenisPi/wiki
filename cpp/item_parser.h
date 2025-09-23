@@ -18,6 +18,7 @@
 #include <tuple>
 
 #include "rapidjson/document.h"
+#include "prop_dict.h"
 
 namespace wiki {
 
@@ -26,10 +27,21 @@ using item_info = std::tuple<std::string, std::string, std::string>;
 
 class ItemParser{
 public:
-    ItemParser(const int index, std::atomic_int* sync, const std::shared_ptr<char>& buffer)
-        : _index(index), _sync(sync), _buffer(buffer) {
+    /**
+     * @brief Construct a new Item Parser object
+     *
+     * @param index
+     * @param sync
+     * @param buffer
+     */
+    ItemParser(const int index, std::atomic_int* sync, const std::shared_ptr<char>& buffer, const std::shared_ptr<Properties>& props)
+        : _index(index), _sync(sync), _buffer(buffer), _props(props) {
     }
 
+    /**
+     * @brief Destroy the Item Parser object
+     *
+     */
     virtual ~ItemParser() {
         release();
     }
@@ -68,6 +80,13 @@ public:
         }
     }
 
+    const std::string s_id = "id";
+    const std::string s_label = "labels";
+    const std::string s_descr = "descriptions";
+    const std::string s_lng_en = "en";
+    const std::string s_claims = "claims";
+    const std::string s_value = "value";
+
     virtual void process(){}
 
     /**
@@ -89,27 +108,65 @@ public:
         return (val == it->MemberEnd() ? std::string() : std::string(val->value.GetString()));
     }
 
-    inline auto get_sub_name(const doc_ptr& doc, const std::string& name, const std::string& subn) const {
+    inline auto get_sub_name(const doc_ptr& doc, const std::string& name, const std::string& subn, const std::string& sub2n = "") const {
         auto val = doc->FindMember(name.c_str());
         if(val != doc->MemberEnd()){
             auto sval = val->value.FindMember(subn.c_str());
             if(sval != val->value.MemberEnd())
-                return std::string(sval->value.GetString());
+                if(sval->value.IsString()){
+                    return std::string(sval->value.GetString());
+                }
+
+                //One more level
+                if(!sub2n.empty()){
+                    if(sval->value.IsObject())
+                    {
+                        auto ssval = sval->value.FindMember(sub2n.c_str());
+                        if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
+                            return std::string(ssval->value.GetString());
+                        }
+                    }
+                    else if(sval->value.IsArray()){
+                        auto ssval = sval->value[0].FindMember(sub2n.c_str());
+                        if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
+                            return std::string(ssval->value.GetString());
+                        }
+                    }
+                }
         }
 
         return std::string();
     }
 
-
-    //const rapidjson::Value::ConstValueIterator& it
+    /**
+     * @brief
+     *
+     * @return item_info
+     */
     item_info parse_item(){
         auto doc = get();
 
-        auto id = get_name(doc, "id");
-        auto label = get_sub_name(doc, "label", "en");
-        auto descr = get_sub_name(doc, "descriptions", "en");
+        const auto id = get_name(doc, s_id);
+        const auto label = get_sub_name(doc, s_label, s_lng_en, s_value);
+        const auto descr = get_sub_name(doc, s_descr, s_lng_en, s_value);
 
-        return std::make_tuple("", "", "");
+        return std::make_tuple(id, label, descr);
+    }
+
+    void parse_claim(const rapidjson::Value::ConstMemberIterator& it){
+        const auto prop_name = std::string(it->name.GetString());
+        if(!_props->is_important_property(prop_name)){
+            //std::cout << "Claim not important Property: " << prop_name << std::endl;
+            return;
+        }
+
+        std::cout << "Claim Important Property: " << prop_name << std::endl;
+        return;
+
+        for(auto prop = it->value.MemberBegin(); prop != it->value.MemberEnd(); ++prop){
+            const std::string prop_name = std::string(prop->name.GetString());
+            std::cout << "Claim Property: " << prop_name << std::endl;
+        }
     }
 
     /**
@@ -137,9 +194,18 @@ public:
                 //std::cout << _buffer.get() << "|" << std::endl;
             }
             else{
+                //Process item information
                 auto itm = parse_item();
                 if(!std::get<0>(itm).empty()){
                     std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << std::endl;
+                }
+
+                //Process item claims, one by one
+                auto claims = get()->FindMember(s_claims.c_str());
+                if(get()->MemberEnd() != claims){
+                    for(auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim){
+                        parse_claim(claim);
+                    }
                 }
             }
 
@@ -172,6 +238,8 @@ public:
 
 private:
     std::shared_ptr<char> _buffer;
+    std::shared_ptr<Properties> _props;
+
     std::atomic_int* _sync;
     doc_ptr ptr_doc;
     int _index = -1;
