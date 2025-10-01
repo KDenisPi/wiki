@@ -65,6 +65,7 @@ int main (int argc, char* argv[])
                     auto ptr_props_doc = ptr_props->get();
 
                     for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
+                        /*
                         auto prop = ptr_props_doc->FindMember(cl_v->name.GetString());
                         const auto prop_name = std::string(cl_v->name.GetString());
 
@@ -73,6 +74,9 @@ int main (int argc, char* argv[])
                                 << (prop!=ptr_props_doc->MemberEnd() ? prop->value[0].GetString() : " Unknown ") << " Imp: "
                                 << props->is_important_property(prop_name) << std::endl;
                         }
+                        */
+
+                        ptr_item->parse_claim(cl_v);
                     }
                 }
                 else

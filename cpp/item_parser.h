@@ -86,7 +86,19 @@ public:
     const std::string s_lng_en = "en";
     const std::string s_claims = "claims";
     const std::string s_value = "value";
+    const std::string s_property = "property";
 
+    const std::string s_mainsnak = "mainsnak";
+    const std::string s_snaktype = "snaktype";
+    const std::string s_datatype = "datatype";
+    const std::string s_datavalue = "datavalue";
+    const std::string s_type = "type";
+    const std::string s_entity_type = "entity-type";
+
+    /**
+     * @brief
+     *
+     */
     virtual void process(){}
 
     /**
@@ -98,45 +110,79 @@ public:
         return ptr_doc;
     }
 
+    /**
+     * @brief Get the name object
+     *
+     * @param doc
+     * @param name
+     * @return auto
+     */
     inline auto get_name(const doc_ptr& doc, const std::string& name) const {
         auto val = doc->FindMember(name.c_str());
         return (val == doc->MemberEnd() ? std::string() : std::string(val->value.GetString()));
     }
 
-    inline auto get_str_value(const rapidjson::Value::ConstValueIterator& it, const std::string& name){
-        auto val = it->FindMember(name.c_str());
-        return (val == it->MemberEnd() ? std::string() : std::string(val->value.GetString()));
+    /**
+     * @brief Get the str value object
+     *
+     * @param it
+     * @param name
+     * @return auto
+     */
+    inline auto get_str_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& name){
+        auto val = it->value.FindMember(name.c_str());
+        return (val == it->value.MemberEnd() ? std::string() : std::string(val->value.GetString()));
     }
 
+    inline auto get_str_sub_value(const rapidjson::Value::ConstMemberIterator& val, const std::string& subn, const std::string& sub2n) const{
+        auto g_name = [](auto it){return std::string(it->name.GetString());};
+
+        auto sval = val->value.FindMember(subn.c_str());
+        if(sval != val->value.MemberEnd()){
+            if(sval->value.IsString()){
+                return g_name(sval);
+            }
+
+            //One more level
+            if(!sub2n.empty()){
+                if(sval->value.IsObject())
+                {
+                    auto ssval = sval->value.FindMember(sub2n.c_str());
+                    if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
+                        return g_name(ssval);
+                    }
+                }
+                else if(sval->value.IsArray()){
+                    auto ssval = sval->value[0].FindMember(sub2n.c_str());
+                    if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
+                        return g_name(ssval);
+                    }
+                }
+            }
+        }
+        return std::string();
+    }
+
+    /**
+     * @brief Get the sub name object
+     *
+     * @param doc
+     * @param name
+     * @param subn
+     * @param sub2n
+     * @return auto
+     */
     inline auto get_sub_name(const doc_ptr& doc, const std::string& name, const std::string& subn, const std::string& sub2n = "") const {
+
         auto val = doc->FindMember(name.c_str());
         if(val != doc->MemberEnd()){
-            auto sval = val->value.FindMember(subn.c_str());
-            if(sval != val->value.MemberEnd())
-                if(sval->value.IsString()){
-                    return std::string(sval->value.GetString());
-                }
-
-                //One more level
-                if(!sub2n.empty()){
-                    if(sval->value.IsObject())
-                    {
-                        auto ssval = sval->value.FindMember(sub2n.c_str());
-                        if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
-                            return std::string(ssval->value.GetString());
-                        }
-                    }
-                    else if(sval->value.IsArray()){
-                        auto ssval = sval->value[0].FindMember(sub2n.c_str());
-                        if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
-                            return std::string(ssval->value.GetString());
-                        }
-                    }
-                }
+            return get_str_sub_value(val, subn, sub2n);
         }
 
         return std::string();
     }
+
+
 
     /**
      * @brief
@@ -153,6 +199,35 @@ public:
         return std::make_tuple(id, label, descr);
     }
 
+    /**
+     * @brief Data type for value
+     * @parameter "datatype" for value, for example ("wikibase-item", "time")
+     * @parameter parameters 2,3 etc depends on datatype
+     *
+     */
+    using data_value = std::tuple<std::string, std::string, std::string>;
+
+    const data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name){
+        auto datatype = get_str_value(it, s_datatype);
+        auto property = get_str_value(it, s_property);
+
+        auto datavalue = it->value.FindMember(s_datavalue.c_str());
+        if(it->value.MemberEnd() != datavalue){
+            auto value = datavalue->value.FindMember(s_value.c_str());
+            if(datavalue->value.MemberEnd() != value){
+
+            }
+        }
+
+        std::cout << "Property: " << property << " Data type: " << datatype << std::endl;
+
+        return std::make_tuple("", "", "");
+    }
+
+    void print_type(const rapidjson::Value& value, const std::string& label = ""){
+        std::cout << label << " Object: " << value.IsObject() << " Array: " << value.IsArray() << " String: " << value.IsString() << std::endl;
+    }
+
     void parse_claim(const rapidjson::Value::ConstMemberIterator& it){
         const auto prop_name = std::string(it->name.GetString());
         if(!_props->is_important_property(prop_name)){
@@ -161,13 +236,25 @@ public:
         }
 
         std::cout << "Claim Important Property: " << prop_name << std::endl;
-        return;
+        //print_type(it->value, "Claim");
 
-        for(auto prop = it->value.MemberBegin(); prop != it->value.MemberEnd(); ++prop){
-            const std::string prop_name = std::string(prop->name.GetString());
-            std::cout << "Claim Property: " << prop_name << std::endl;
+
+        if(it->value.IsArray()){
+            const auto property_data = it->value.GetArray();
+            for(auto p_data = property_data.Begin(); p_data != property_data.End(); ++p_data){
+
+                //std::cout << " Data Object: " << p_data->IsObject() << " Array: " << p_data->IsArray() << " String: " << p_data->IsString() << std::endl;
+                const auto data_obj = p_data->GetObject();
+                const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
+                if(data_obj.MemberEnd() != mainsnak){
+                    auto res = parse_data_value(mainsnak, prop_name);
+                }
+                //break;
+            }
         }
     }
+
+
 
     /**
      * @brief
