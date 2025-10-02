@@ -47,13 +47,6 @@ void WiKi::worker(){
             counter++;
         }
 
-        //std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        /*
-        for(int i = 0; i < this->max_threads; i++){
-            std::cout << "Main. Index: " << i << " Value: " << this->threads_vars[i].load() << std::endl;
-        }
-        */
-
         while(!fn_all_done());
 
         if(!last_read_success && fn_all_done()){

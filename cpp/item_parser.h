@@ -94,6 +94,7 @@ public:
     const std::string s_datavalue = "datavalue";
     const std::string s_type = "type";
     const std::string s_entity_type = "entity-type";
+    const std::string s_time = "time";
 
     /**
      * @brief
@@ -135,29 +136,28 @@ public:
     }
 
     inline auto get_str_sub_value(const rapidjson::Value::ConstMemberIterator& val, const std::string& subn, const std::string& sub2n) const{
-        auto g_name = [](auto it){return std::string(it->name.GetString());};
+        auto g_name = [](auto it){return (it->value.IsString() ? std::string(it->value.GetString()) : std::string());};
 
         auto sval = val->value.FindMember(subn.c_str());
         if(sval != val->value.MemberEnd()){
-            if(sval->value.IsString()){
-                return g_name(sval);
-            }
-
             //One more level
             if(!sub2n.empty()){
                 if(sval->value.IsObject())
                 {
                     auto ssval = sval->value.FindMember(sub2n.c_str());
-                    if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
+                    if(sval->value.MemberEnd() != ssval){
                         return g_name(ssval);
                     }
                 }
                 else if(sval->value.IsArray()){
                     auto ssval = sval->value[0].FindMember(sub2n.c_str());
-                    if(sval->value.MemberEnd() != ssval && ssval->value.IsString()){
+                    if(sval->value.MemberEnd() != ssval){
                         return g_name(ssval);
                     }
                 }
+            }
+            else{
+                return g_name(sval);
             }
         }
         return std::string();
@@ -182,8 +182,6 @@ public:
         return std::string();
     }
 
-
-
     /**
      * @brief
      *
@@ -200,6 +198,23 @@ public:
     }
 
     /**
+     * @brief
+     *
+     * @param dtype
+     * @return true
+     * @return false
+     */
+    inline const bool is_type_wikiid(const std::string& dtype) const {
+        return (dtype == "wikibase-entityid");
+    }
+
+    inline const bool is_type_time(const std::string& dtype) const {
+        return (dtype == s_time);
+    }
+
+
+
+    /**
      * @brief Data type for value
      * @parameter "datatype" for value, for example ("wikibase-item", "time")
      * @parameter parameters 2,3 etc depends on datatype
@@ -210,16 +225,23 @@ public:
     const data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name){
         auto datatype = get_str_value(it, s_datatype);
         auto property = get_str_value(it, s_property);
+        std::string key_value;
 
         auto datavalue = it->value.FindMember(s_datavalue.c_str());
         if(it->value.MemberEnd() != datavalue){
+            const auto dtype = get_str_value(datavalue, s_type);
             auto value = datavalue->value.FindMember(s_value.c_str());
             if(datavalue->value.MemberEnd() != value){
-
+                if(is_type_wikiid(dtype)){
+                    key_value = get_str_value(value, s_id);
+                }
+                else if(is_type_time(dtype)){
+                    key_value = get_str_value(value, s_time);
+                    //std::cout << "Property: " << property << " Data type: " << datatype << " Type: " << dtype << " KVal: " << key_value << std::endl;
+                    return std::make_tuple(property, dtype, key_value);
+                }
             }
         }
-
-        std::cout << "Property: " << property << " Data type: " << datatype << std::endl;
 
         return std::make_tuple("", "", "");
     }
@@ -235,7 +257,7 @@ public:
             return;
         }
 
-        std::cout << "Claim Important Property: " << prop_name << std::endl;
+        //std::cout << "Claim Important Property: " << prop_name << std::endl;
         //print_type(it->value, "Claim");
 
 
@@ -248,6 +270,8 @@ public:
                 const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
                 if(data_obj.MemberEnd() != mainsnak){
                     auto res = parse_data_value(mainsnak, prop_name);
+                    if(!std::get<0>(res).empty())
+                        std::cout << "Property: " << std::get<0>(res) << " Type: " << std::get<1>(res) << " KVal: " << std::get<2>(res) << std::endl;
                 }
                 //break;
             }
@@ -284,7 +308,7 @@ public:
                 //Process item information
                 auto itm = parse_item();
                 if(!std::get<0>(itm).empty()){
-                    std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << std::endl;
+                    std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
                 }
 
                 //Process item claims, one by one

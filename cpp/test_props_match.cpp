@@ -56,8 +56,13 @@ int main (int argc, char* argv[])
             std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, props);
             if(ptr_item->load(buffer.get())){
                 auto ptr_item_doc = ptr_item->get();
-                auto v_claims = ptr_item_doc->FindMember("claims");
 
+                auto itm = ptr_item->parse_item();
+                if(!std::get<0>(itm).empty()){
+                    std::cout << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
+                }
+
+                auto v_claims = ptr_item_doc->FindMember("claims");
                 if(v_claims != ptr_item_doc->MemberEnd()){
                     std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: "
                         << v_claims->value.MemberCount() << std::endl;
@@ -65,17 +70,6 @@ int main (int argc, char* argv[])
                     auto ptr_props_doc = ptr_props->get();
 
                     for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
-                        /*
-                        auto prop = ptr_props_doc->FindMember(cl_v->name.GetString());
-                        const auto prop_name = std::string(cl_v->name.GetString());
-
-                        if(props->is_important_property(prop_name)){
-                            std::cout << "Name: " << prop_name << " "
-                                << (prop!=ptr_props_doc->MemberEnd() ? prop->value[0].GetString() : " Unknown ") << " Imp: "
-                                << props->is_important_property(prop_name) << std::endl;
-                        }
-                        */
-
                         ptr_item->parse_claim(cl_v);
                     }
                 }
