@@ -67,7 +67,7 @@ public:
      * @param prop_id
      * @return const p_info&
      */
-    const pInfo get(const pID& prop_id) const;
+    const pInfo get_prop(const pID& prop_id) const;
 
     /**
      * @brief

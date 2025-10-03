@@ -34,6 +34,10 @@ int main (int argc, char* argv[])
 
     wiki::WiKi wk;
 
+    if(argc >= 3){
+        wk.load_properties(argv[2]);
+    }
+
     if(!wk.load_source(std::string(argv[1]))){
         std::cout << "Could not load source file" << std::string(argv[1]) << std::endl;
         exit(EXIT_FAILURE);

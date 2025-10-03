@@ -237,7 +237,6 @@ public:
                 }
                 else if(is_type_time(dtype)){
                     key_value = get_str_value(value, s_time);
-                    //std::cout << "Property: " << property << " Data type: " << datatype << " Type: " << dtype << " KVal: " << key_value << std::endl;
                     return std::make_tuple(property, dtype, key_value);
                 }
             }
@@ -250,16 +249,16 @@ public:
         std::cout << label << " Object: " << value.IsObject() << " Array: " << value.IsArray() << " String: " << value.IsString() << std::endl;
     }
 
+    /**
+     * @brief
+     *
+     * @param it
+     */
     void parse_claim(const rapidjson::Value::ConstMemberIterator& it){
         const auto prop_name = std::string(it->name.GetString());
         if(!_props->is_important_property(prop_name)){
-            //std::cout << "Claim not important Property: " << prop_name << std::endl;
             return;
         }
-
-        //std::cout << "Claim Important Property: " << prop_name << std::endl;
-        //print_type(it->value, "Claim");
-
 
         if(it->value.IsArray()){
             const auto property_data = it->value.GetArray();
@@ -270,8 +269,12 @@ public:
                 const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
                 if(data_obj.MemberEnd() != mainsnak){
                     auto res = parse_data_value(mainsnak, prop_name);
-                    if(!std::get<0>(res).empty())
-                        std::cout << "Property: " << std::get<0>(res) << " Type: " << std::get<1>(res) << " KVal: " << std::get<2>(res) << std::endl;
+                    if(!std::get<0>(res).empty()){
+                        auto prop = _props->get_prop(std::get<0>(res));
+
+                        std::cout << "Property: " << std::get<0>(res) << " [" << \
+                            std::get<1>(prop) << "] Type: " << std::get<1>(res) << " KVal: " << std::get<2>(res) << std::endl;
+                    }
                 }
                 //break;
             }

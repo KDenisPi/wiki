@@ -59,10 +59,12 @@ bool Properties::load(const std::string& filename){
  * @param prop_id
  * @return const p_info
  */
-const pInfo Properties::get(const pID& prop_id) const{
-    auto prop = ptr_prop->FindMember(prop_id.c_str());
-    if(ptr_prop->MemberEnd() != prop){
-        return pInfo(prop_id, std::string(prop->value[0].GetString()), std::string(prop->value[1].GetString()));
+const pInfo Properties::get_prop(const pID& prop_id) const{
+    if(is_loaded()){
+        auto prop = ptr_prop->FindMember(prop_id.c_str());
+        if(ptr_prop->MemberEnd() != prop){
+            return pInfo(prop_id, std::string(prop->value[0].GetString()), std::string(prop->value[1].GetString()));
+        }
     }
 
     return pInfo(pID(), std::string(), std::string());
