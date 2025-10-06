@@ -15,6 +15,9 @@
 #include <condition_variable>
 #include <thread>
 #include <mutex>
+#include <pthread.h>
+#include <sched.h>
+#include <algorithm>
 
 #include "defines.h"
 #include "item_reader.h"
@@ -50,7 +53,7 @@ public:
      * @brief Max number of parser threads
      *
      */
-    const static int max_threads = MAX_PARSING_THREADS; //5;
+    const static unsigned int max_threads = MAX_PARSING_THREADS; //5;
 
     /**
      * @brief Maximum size of Wiki Item
@@ -89,15 +92,52 @@ public:
      * @return * void
      */
     void start(){
+        auto hw_concur = std::thread::hardware_concurrency();
+        std::cout << "HW Concurrency : " << hw_concur << std::endl;
+
         for(int i = 0; i < max_threads; i++){
             parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i], props);
             threads[i] = std::thread(&ItemParser::worker, parsers[i].get());
+            if(hw_concur > max_threads){
+                setThreadAffinity(threads[i], i);
+            }
             threads[i].detach();
         }
 
         th_main = std::thread(&WiKi::worker, this);
+        if(hw_concur > max_threads){
+            setThreadAffinity(th_main, max_threads);
+        }
         th_main.join();
     }
+
+    /**
+     * @brief Set the Thread Affinity object
+     *
+     * @param th
+     * @param core_id
+     * @return true
+     * @return false
+     */
+    bool setThreadAffinity(std::thread& th, int core_id){
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);           // Clear the CPU set
+        CPU_SET(core_id, &cpuset);   // Add the desired core to the set
+
+        // Get the native pthread handle from the std::thread object
+        pthread_t handle = th.native_handle();
+
+        // Set the CPU affinity
+        int result = pthread_setaffinity_np(handle, sizeof(cpu_set_t), &cpuset);
+        if (result != 0) {
+            std::cerr << "Error setting thread affinity: " << result << std::endl;
+            return false;
+        }
+
+        std::cout << "Thread affinity " << handle << " set to core " << core_id << std::endl;
+        return true;
+    }
+
 
     /**
      * @brief
