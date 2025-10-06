@@ -92,20 +92,21 @@ public:
      * @return * void
      */
     void start(){
-        auto hw_concur = std::thread::hardware_concurrency();
-        std::cout << "HW Concurrency : " << hw_concur << std::endl;
+        auto hw_concurrency = std::thread::hardware_concurrency();
+        std::cout << "HW Concurrency : " << hw_concurrency << std::endl;
+        const auto assign_threads = (use_concurrency && (hw_concurrency > max_threads));
 
         for(int i = 0; i < max_threads; i++){
             parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i], props);
             threads[i] = std::thread(&ItemParser::worker, parsers[i].get());
-            if(hw_concur > max_threads){
+            if(assign_threads){
                 setThreadAffinity(threads[i], i);
             }
             threads[i].detach();
         }
 
         th_main = std::thread(&WiKi::worker, this);
-        if(hw_concur > max_threads){
+        if(assign_threads){
             setThreadAffinity(th_main, max_threads);
         }
         th_main.join();
@@ -194,6 +195,7 @@ private:
     std::thread th_main;
 
     bool finish = false;
+    bool use_concurrency = true;    //Try to assign working thread to the separate cores if it is possible
 
     std::shared_ptr<ItemParser> parsers[max_threads];
     std::shared_ptr<Properties> props;
