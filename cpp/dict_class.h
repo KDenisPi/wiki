@@ -46,8 +46,9 @@ public:
         if(inputFile.is_open()){
             std::string line;
             while(std::getline(inputFile, line)){
-                const std::string item_id = line.substr(0, line.find(";"));
-                p_dict_exists[item_id] = item_id;
+                const auto off = line.find(";");
+                const std::string item_id = line.substr(0, off);
+                p_dict_exists[item_id] = line.substr(off+1);
                 count++;
             }
 

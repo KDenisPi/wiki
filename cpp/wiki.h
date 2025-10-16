@@ -23,6 +23,7 @@
 #include "item_reader.h"
 #include "item_parser.h"
 #include "prop_dict.h"
+#include "receiver_impl.h"
 
 namespace wiki {
 
@@ -183,9 +184,12 @@ public:
     }
 
     void load_important_properties(){
+/*
         std::vector<pID> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
                 "P570", "P571", "P577", "P585", "P793", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
             "P4647", "P9899", "P10673"};
+*/
+        std::vector<pID> v_props = {"P31"};
 
         props->load_important_property(v_props);
     }
@@ -199,6 +203,8 @@ private:
 
     std::shared_ptr<ItemParser> parsers[max_threads];
     std::shared_ptr<Properties> props;
+
+    std::shared_ptr<ReceiverImpl> receiver;
 
     ItemReader reader;
 

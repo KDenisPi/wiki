@@ -18,12 +18,13 @@
 #include <tuple>
 
 #include "rapidjson/document.h"
+
+#include "defines.h"
 #include "prop_dict.h"
 
 namespace wiki {
 
 using doc_ptr = std::shared_ptr<rapidjson::Document>;
-using item_info = std::tuple<std::string, std::string, std::string>;
 
 class ItemParser{
 public:
@@ -234,6 +235,7 @@ public:
             if(datavalue->value.MemberEnd() != value){
                 if(is_type_wikiid(dtype)){
                     key_value = get_str_value(value, s_id);
+                    return std::make_tuple(property, dtype, key_value);
                 }
                 else if(is_type_time(dtype)){
                     key_value = get_str_value(value, s_time);
@@ -259,6 +261,8 @@ public:
         if(!_props->is_important_property(prop_name)){
             return;
         }
+
+        //std::cout << "Properly : " << prop_name << std::endl;
 
         if(it->value.IsArray()){
             const auto property_data = it->value.GetArray();

@@ -24,15 +24,6 @@
 
 namespace wiki {
 
-using pID = std::string;
-
-/**
- * @brief Property information
- * property ID, label, description
- *
- */
-using pInfo = std::tuple<pID, std::string, std::string>;
-
 class Properties{
 public:
     Properties() {
