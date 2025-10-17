@@ -56,6 +56,8 @@ public:
         }
 
         save_load_active.store(false);
+        std::cout << "Dict load: " << dict_filename << " Loaded: " << p_dict.size() << std::endl;
+
         return count;
     }
 
@@ -80,6 +82,8 @@ public:
     virtual const bool save(const std::string& filename = ""){
         bool result = true;
         save_load_active.store(true);
+
+        std::cout << "Dict save: " << dict_filename << " Saved: " << p_dict.size() << std::endl;
 
         std::fstream outputFile((filename.empty() ? dict_filename : filename), std::ios::out | std::ios::app);
         if(outputFile.is_open()){
@@ -117,6 +121,8 @@ public:
         if( p_dict_exists.size() > 0 && p_dict_exists.end() != p_dict_exists.find(key)){
             return;
         }
+
+        //std::cout << "Dict put: " << key << " Count: " << p_dict.size() << std::endl;
 
         const std::lock_guard<std::mutex> lock(mtx);
         p_dict[key] = val;

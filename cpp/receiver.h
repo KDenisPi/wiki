@@ -25,6 +25,8 @@ public:
     }
 
     virtual void put_dictionary_value(const dict_key& key, const dict_val& val) = 0;
+    virtual bool load() = 0;
+    virtual bool save() = 0;
 
     /**
      * @brief

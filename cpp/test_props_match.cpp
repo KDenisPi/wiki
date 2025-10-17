@@ -20,6 +20,7 @@
 #include "prop_dict.h"
 #include "item_reader.h"
 #include "item_parser.h"
+#include "receiver_easy.h"
 
 int main (int argc, char* argv[])
 {
@@ -58,7 +59,8 @@ int main (int argc, char* argv[])
         if(ptr_reader->next(buffer.get(), MAX_LINE_LENGTH)){
             std::atomic_int sync;
             std::shared_ptr<char> fake_buff;
-            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, ptr_props);
+            std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverEasy>();
+            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, ptr_props, receiver);
             if(ptr_item->load(buffer.get())){
                 auto ptr_item_doc = ptr_item->get();
 

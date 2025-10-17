@@ -35,6 +35,7 @@ public:
      */
     WiKi() {
         props = std::make_shared<Properties>();
+        receiver = std::make_shared<ReceiverImpl>();
 
         for(int i = 0; i < max_threads; i++){
             buffers[i] = std::shared_ptr<char>(new char[max_buffer_size]);
@@ -93,12 +94,15 @@ public:
      * @return * void
      */
     void start(){
+
+        receiver->load();
+
         auto hw_concurrency = std::thread::hardware_concurrency();
         std::cout << "HW Concurrency : " << hw_concurrency << std::endl;
         const auto assign_threads = (use_concurrency && (hw_concurrency > max_threads));
 
         for(int i = 0; i < max_threads; i++){
-            parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i], props);
+            parsers[i] = std::make_shared<ItemParser>(i, &threads_vars[i], buffers[i], props, receiver);
             threads[i] = std::thread(&ItemParser::worker, parsers[i].get());
             if(assign_threads){
                 setThreadAffinity(threads[i], i);
@@ -111,6 +115,8 @@ public:
             setThreadAffinity(th_main, max_threads);
         }
         th_main.join();
+
+        receiver->save();
     }
 
     /**
@@ -204,7 +210,7 @@ private:
     std::shared_ptr<ItemParser> parsers[max_threads];
     std::shared_ptr<Properties> props;
 
-    std::shared_ptr<ReceiverImpl> receiver;
+    std::shared_ptr<Receiver> receiver;
 
     ItemReader reader;
 

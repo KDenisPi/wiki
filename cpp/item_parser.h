@@ -21,6 +21,7 @@
 
 #include "defines.h"
 #include "prop_dict.h"
+#include "receiver.h"
 
 namespace wiki {
 
@@ -35,8 +36,12 @@ public:
      * @param sync
      * @param buffer
      */
-    ItemParser(const int index, std::atomic_int* sync, const std::shared_ptr<char>& buffer, const std::shared_ptr<Properties>& props)
-        : _index(index), _sync(sync), _buffer(buffer), _props(props) {
+    ItemParser(const int index, std::atomic_int* sync,
+        const std::shared_ptr<char>& buffer,
+        const std::shared_ptr<Properties>& props,
+        const std::shared_ptr<Receiver>& receiver
+    )
+        : _index(index), _sync(sync), _buffer(buffer), _props(props), _receiver(receiver) {
     }
 
     /**
@@ -136,6 +141,14 @@ public:
         return (val == it->value.MemberEnd() ? std::string() : std::string(val->value.GetString()));
     }
 
+    /**
+     * @brief Get the str sub value object
+     *
+     * @param val
+     * @param subn
+     * @param sub2n
+     * @return auto
+     */
     inline auto get_str_sub_value(const rapidjson::Value::ConstMemberIterator& val, const std::string& subn, const std::string& sub2n) const{
         auto g_name = [](auto it){return (it->value.IsString() ? std::string(it->value.GetString()) : std::string());};
 
@@ -223,6 +236,13 @@ public:
      */
     using data_value = std::tuple<std::string, std::string, std::string>;
 
+    /**
+     * @brief
+     *
+     * @param it
+     * @param prop_name
+     * @return const data_value
+     */
     const data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name){
         auto datatype = get_str_value(it, s_datatype);
         auto property = get_str_value(it, s_property);
@@ -276,8 +296,12 @@ public:
                     if(!std::get<0>(res).empty()){
                         auto prop = _props->get_prop(std::get<0>(res));
 
-                        std::cout << "Property: " << std::get<0>(res) << " [" << \
-                            std::get<1>(prop) << "] Type: " << std::get<1>(res) << " KVal: " << std::get<2>(res) << std::endl;
+                        if(_receiver){
+                            _receiver->put_dictionary_value(std::get<0>(res), std::pair(std::get<1>(res), std::get<2>(res)));
+                        }
+
+                        //std::cout << "Property: " << std::get<0>(res) << " [" << \
+                        //    std::get<1>(prop) << "] Type: " << std::get<1>(res) << " KVal: " << std::get<2>(res) << std::endl;
                     }
                 }
                 //break;
@@ -357,8 +381,10 @@ public:
 private:
     std::shared_ptr<char> _buffer;
     std::shared_ptr<Properties> _props;
+    std::shared_ptr<Receiver> _receiver;
 
     std::atomic_int* _sync;
+
     doc_ptr ptr_doc;
     int _index = -1;
 
