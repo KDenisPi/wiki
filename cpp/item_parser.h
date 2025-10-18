@@ -339,8 +339,15 @@ public:
                 //Process item information
                 auto itm = parse_item();
                 if(!std::get<0>(itm).empty()){
-                    std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
+                    //std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
+
+                    if(_receiver){
+                        _receiver->put_dictionary_value("Item", std::pair(std::get<1>(itm)+";"+std::get<2>(itm), std::get<0>(itm)));
+                    }
+
                 }
+
+
 
                 //Process item claims, one by one
                 auto claims = get()->FindMember(s_claims.c_str());

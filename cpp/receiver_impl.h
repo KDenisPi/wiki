@@ -28,7 +28,7 @@ public:
      *
      */
     ReceiverImpl() {
-        std::vector<std::string> vals = {"P31"};
+        std::vector<std::string> vals = {"P31", "Item"};
         load_dict_list(vals);
 
         for_each(vals.begin(), vals.end(), [this](std::string& prop){
@@ -86,7 +86,7 @@ public:
             return;
         }
 
-        std::cout << "Property: " << key << " [ Type: " << std::get<0>(val) << "] Val: " << std::get<1>(val) << std::endl;
+        //std::cout << "Property: " << key << " [ Type: " << std::get<0>(val) << "] Val: " << std::get<1>(val) << std::endl;
         dicts[key]->put(std::get<1>(val), val);
     }
 
