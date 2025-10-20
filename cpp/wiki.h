@@ -107,7 +107,6 @@ public:
             if(assign_threads){
                 setThreadAffinity(threads[i], i);
             }
-            threads[i].detach();
         }
 
         th_main = std::thread(&WiKi::worker, this);

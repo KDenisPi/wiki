@@ -65,8 +65,16 @@ void WiKi::worker(){
     for(int i = 0; i < this->max_threads; i++){
         parsers[i]->set_finish();
     }
-    std::cout << "Wain for child threads" << std::endl;
+    std::cout << "Wait for child threads" << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    for(int i = 0; i < this->max_threads; i++){
+        if(threads[i].joinable()){
+            std::cout << "Join to : " << i << std::endl;
+            threads[i].join();
+            std::cout << "Thread finished : " << i << std::endl;
+        }
+    }
 
     std::cout << "Main worker finished" << std::endl;
 }
