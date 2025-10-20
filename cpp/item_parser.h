@@ -101,6 +101,7 @@ public:
     const std::string s_type = "type";
     const std::string s_entity_type = "entity-type";
     const std::string s_time = "time";
+    const std::string s_tmz = "timezone";
 
     /**
      * @brief
@@ -140,6 +141,26 @@ public:
         auto val = it->value.FindMember(name.c_str());
         return (val == it->value.MemberEnd() ? std::string() : std::string(val->value.GetString()));
     }
+
+    template <typename T>
+    inline T get_number_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& name){
+        auto val = it->value.FindMember(name.c_str());
+        if( val == it->value.MemberEnd() ){
+            return (T)0;
+        }
+        if(val->value.IsInt()){
+            return val->value.GetInt();
+        }
+        if(val->value.IsFloat()){
+            return val->value.GetFloat();
+        }
+        if(val->value.IsInt64()){
+            return (T)val->value.GetInt64();
+        }
+
+        return (T)0;
+    }
+
 
     /**
      * @brief Get the str sub value object
@@ -226,15 +247,14 @@ public:
         return (dtype == s_time);
     }
 
-
-
     /**
-     * @brief Data type for value
-     * @parameter "datatype" for value, for example ("wikibase-item", "time")
-     * @parameter parameters 2,3 etc depends on datatype
-     *
+     * @brief
+     * 0 - property ID
+     * 1 - key value for this data item
+     * 2 - type of key value
+     * 3 - additional parameter
      */
-    using data_value = std::tuple<std::string, std::string, std::string>;
+    using data_value = std::tuple<std::string, std::string, std::string, std::string>;
 
     /**
      * @brief
@@ -255,16 +275,17 @@ public:
             if(datavalue->value.MemberEnd() != value){
                 if(is_type_wikiid(dtype)){
                     key_value = get_str_value(value, s_id);
-                    return std::make_tuple(property, dtype, key_value);
+                    return std::make_tuple(property, key_value, dtype, "");
                 }
                 else if(is_type_time(dtype)){
                     key_value = get_str_value(value, s_time);
-                    return std::make_tuple(property, dtype, key_value);
+                    auto dmz = get_number_value<int>(value, s_tmz);
+                    return std::make_tuple(property, key_value, dtype, std::to_string(dmz));
                 }
             }
         }
 
-        return std::make_tuple("", "", "");
+        return std::make_tuple("", "", "", "");
     }
 
     void print_type(const rapidjson::Value& value, const std::string& label = ""){
@@ -297,7 +318,7 @@ public:
                         auto prop = _props->get_prop(std::get<0>(res));
 
                         if(_receiver){
-                            _receiver->put_dictionary_value(std::get<0>(res), std::pair(std::get<1>(res), std::get<2>(res)));
+                            _receiver->put_dictionary_value(std::get<0>(res), std::get<1>(res), std::pair(std::get<2>(res), std::get<3>(res)));
                         }
 
                         //std::cout << "Property: " << std::get<0>(res) << " [" << \
@@ -342,7 +363,7 @@ public:
                     //std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
 
                     if(_receiver){
-                        _receiver->put_dictionary_value("Item", std::pair(std::get<1>(itm)+";"+std::get<2>(itm), std::get<0>(itm)));
+                        _receiver->put_dictionary_value("Item", std::get<0>(itm), std::pair(std::get<1>(itm),std::get<2>(itm)));
                     }
 
                 }

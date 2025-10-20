@@ -19,7 +19,7 @@
 namespace wiki{
 
 #define MAX_LINE_LENGTH 1024*1024*5
-#define MAX_PARSING_THREADS 3 //5
+#define MAX_PARSING_THREADS 1 //5
 
 using pID = std::string;
 

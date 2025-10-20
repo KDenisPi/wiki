@@ -81,13 +81,13 @@ public:
      * @param key
      * @param val
      */
-    virtual void put_dictionary_value(const dict_key& key, const dict_val& val) override {
-        if(!is_dictionary(key)){
+    virtual void put_dictionary_value(const dict_key& d_key, const dict_key& key, const dict_val& val) override {
+        if(!is_dictionary(d_key)){
             return;
         }
 
         //std::cout << "Property: " << key << " [ Type: " << std::get<0>(val) << "] Val: " << std::get<1>(val) << std::endl;
-        dicts[key]->put(std::get<1>(val), val);
+        dicts[d_key]->put(key, val);
     }
 
 private:

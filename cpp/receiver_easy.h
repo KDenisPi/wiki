@@ -64,8 +64,8 @@ public:
      * @param key
      * @param val
      */
-    virtual void put_dictionary_value(const dict_key& key, const dict_val& val) override {
-        if(!is_dictionary(key)){
+    virtual void put_dictionary_value(const dict_key& d_key, const dict_key& key, const dict_val& val) override {
+        if(!is_dictionary(d_key)){
             return;
         }
     }
