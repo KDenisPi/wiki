@@ -39,25 +39,25 @@ public:
      */
     virtual const int load(const std::string& filename = ""){
         int count = 0;
-        save_load_active.store(true);
-        const std::lock_guard<std::mutex> lock(mtx);
+        const auto f_name = (filename.empty() ? dict_filename : filename);
 
-        std::ifstream inputFile((filename.empty() ? dict_filename : filename));
-        if(inputFile.is_open()){
-            std::string line;
-            while(std::getline(inputFile, line)){
-                const auto off = line.find(";");
-                const std::string item_id = line.substr(0, off);
-                p_dict_exists[item_id] = line.substr(off+1);
-                count++;
+        {
+            const std::lock_guard<std::mutex> lock(mtx);
+            std::ifstream inputFile((filename.empty() ? dict_filename : filename));
+            if(inputFile.is_open()){
+                std::string line;
+                while(std::getline(inputFile, line)){
+                    const auto off = line.find(";");
+                    const std::string item_id = line.substr(0, off);
+                    p_dict_exists[item_id] = "";
+                    count++;
+                }
+
+                inputFile.close();
             }
-
-            inputFile.close();
         }
 
-        save_load_active.store(false);
-        std::cout << "Dict load: " << dict_filename << " Loaded: " << p_dict.size() << std::endl;
-
+        std::cout << "Dict " << dict_name << " load from: " << f_name << " Size: " << p_dict.size() << std::endl;
         return count;
     }
 
@@ -79,16 +79,21 @@ public:
      * @return true
      * @return false
      */
-    virtual const bool save(const std::string& filename = ""){
+    virtual const bool save(const bool flush = false, const std::string& filename = ""){
         bool result = true;
-        save_load_active.store(true);
+        const auto f_name = (filename.empty() ? dict_filename : filename);
+        std::cout << "Dict " << dict_name << " save to: " << f_name << " Size: " << p_dict.size() << std::endl;
 
-        std::cout << "Dict save: " << dict_filename << " Saved: " << p_dict.size() << std::endl;
+        const std::lock_guard<std::mutex> lock(mtx);
 
-        std::fstream outputFile((filename.empty() ? dict_filename : filename), std::ios::out | std::ios::app);
+        std::fstream outputFile(f_name, std::ios::out | std::ios::app);
         if(outputFile.is_open()){
             outputFile.seekg(0, std::fstream::end);
             for( auto it = p_dict.begin(); it != p_dict.end(); ++it ){
+                if(flush){
+                    p_dict_exists[it->first] = "";
+                }
+
                 outputFile << it->first;
                 for_each(it->second, [&](const auto& val) {
                     outputFile << ";" << val;
@@ -96,11 +101,16 @@ public:
                 outputFile << std::endl;
             }
             outputFile.close();
-        }
-        else
-            result = false;
 
-        save_load_active.store(false);
+            //clean disctionalty after saving
+            if(flush){
+                p_dict.clear();
+            }
+        }
+        else{
+            result = false;
+        }
+
         return result;
     }
 
@@ -114,17 +124,13 @@ public:
     void put(const K& key, const V& val){
         assert((std::string(typeid(val).name()).find("tuple") != std::string::npos));
 
-        if(save_load_active.load()) //do nothing if we load or save data
-            return;
+        const std::lock_guard<std::mutex> lock(mtx);
 
         //check if we have already had this key before
         if( p_dict_exists.size() > 0 && p_dict_exists.end() != p_dict_exists.find(key)){
             return;
         }
 
-        //std::cout << "Dict put: " << key << " Count: " << p_dict.size() << std::endl;
-
-        const std::lock_guard<std::mutex> lock(mtx);
         p_dict[key] = val;
     }
 
@@ -136,7 +142,6 @@ private:
 
     std::string dict_name;
     std::string dict_filename;
-    std::atomic_bool save_load_active = false;
 };
 
 }//namespace wiki

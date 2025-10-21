@@ -58,6 +58,11 @@ void WiKi::worker(){
             std::cout << "Read error: " << last_read_success << " Is finish: " << is_finish() << std::endl;
             break;
         }
+
+        //flush data
+        if( counter > 0 && get_flush_bulk() > 0 && (counter%get_flush_bulk() == 0)){
+            receiver->flush();
+        }
     }
 
     std::cout << "Counter: " << std::to_string(counter) << std::endl;

@@ -34,6 +34,8 @@ int main (int argc, char* argv[])
 
     wiki::WiKi wk;
 
+    wk.set_flush_bulk(27);
+
     if(argc >= 3){
         wk.load_properties(argv[2]);
     }

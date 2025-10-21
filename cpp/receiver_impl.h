@@ -59,6 +59,14 @@ public:
         return true;
     }
 
+    virtual void flush() override {
+        std::for_each(dicts.begin(), dicts.end(), [](const std::pair<pID, std::shared_ptr<DictClass<dict_key, dict_val>>>& dict) {
+                if(dict.second.get()){
+                    dict.second->save(true);
+                }
+            });
+    }
+
     /**
      * @brief
      *

@@ -217,6 +217,14 @@ public:
         }
     }
 
+    void set_flush_bulk(const long fl_size){
+        flush_bulk = fl_size;
+    }
+
+    inline const long get_flush_bulk() const{
+        return flush_bulk;
+    }
+
 private:
     std::mutex cv_m;
     std::thread th_main;
@@ -232,6 +240,12 @@ private:
     ItemReader reader;
     std::string position_file;
 
+    long flush_bulk = 10000;
+
+    /**
+     * @brief
+     *
+     */
     void save_position_file(){
         std::fstream outputFile(position_file, std::ios::out);
         if(outputFile.is_open()){
