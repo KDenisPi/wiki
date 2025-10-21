@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <tuple>
+#include <fstream>
 
 #include "rapidjson/document.h"
 
@@ -36,12 +37,19 @@ public:
      * @param sync
      * @param buffer
      */
-    ItemParser(const int index, std::atomic_int* sync,
+    ItemParser(const int index,
+        std::atomic_int* sync,
         const std::shared_ptr<char>& buffer,
         const std::shared_ptr<Properties>& props,
         const std::shared_ptr<Receiver>& receiver
     )
         : _index(index), _sync(sync), _buffer(buffer), _props(props), _receiver(receiver) {
+
+        const std::string f_name = "iparser_" + std::to_string(index) + ".log";
+        logFile.open(f_name, std::ios::out | std::ios::app);
+        if(logFile.is_open()){
+            logFile.seekg(0, std::fstream::end);
+        }
     }
 
     /**
@@ -49,6 +57,10 @@ public:
      *
      */
     virtual ~ItemParser() {
+        if(logFile.is_open()){
+            logFile.close();
+        }
+
         release();
     }
 
@@ -60,19 +72,25 @@ public:
      * @return false
      */
     bool load(const char* buff){
-        release(); //not sure
+
+        //Release JSON object (?)
+        release();
 
         ptr_doc = std::make_shared<rapidjson::Document>();
-
         ptr_doc->Parse(buff);
         if(ptr_doc->HasParseError()){
+            char msg_buff[40];
             auto err = ptr_doc->GetParseError();
-            std::cout << " Parse error: " << std::to_string(err) << " Offset: " << ptr_doc->GetErrorOffset() << std::endl;
+            std::string msg = "Parse error: " + std::to_string(err) + " Offset: " + std::to_string(ptr_doc->GetErrorOffset());
 
-            release();
+            if( strlen(buff) >= sizeof(msg_buff))
+                std::strncpy(msg_buff, buff, sizeof(msg_buff));
+            else
+                std::strncpy(msg_buff, buff, strlen(buff));
+
+            log(msg + "[" + std::string(msg_buff) + "]");
             return false;
         }
-
         return true;
     }
 
@@ -83,6 +101,17 @@ public:
     inline void release(){
         if(ptr_doc){
             ptr_doc.reset();
+        }
+    }
+
+    /**
+     * @brief
+     *
+     * @param str
+     */
+    void log(const std::string& str){
+        if(logFile.is_open()){
+            logFile << str << std::endl;
         }
     }
 
@@ -320,12 +349,8 @@ public:
                         if(_receiver){
                             _receiver->put_dictionary_value(std::get<0>(res), std::get<1>(res), std::pair(std::get<2>(res), std::get<3>(res)));
                         }
-
-                        //std::cout << "Property: " << std::get<0>(res) << " [" << \
-                        //    std::get<1>(prop) << "] Type: " << std::get<1>(res) << " KVal: " << std::get<2>(res) << std::endl;
                     }
                 }
-                //break;
             }
         }
     }
@@ -347,28 +372,19 @@ public:
             while(!is_finish() && fn_no_data());
 
             if(is_finish()){
-                std::cout << "Finish detected. Index: " << this->_index << std::endl;
+                //std::cout << "Finish detected. Index: " << this->_index << std::endl;
                 break;
             }
 
             auto res = load(_buffer.get());
-            if(!res){
-                std::cout << "Could not parse data. Index: " << this->_index << std::endl;
-                //std::cout << _buffer.get() << "|" << std::endl;
-            }
-            else{
+            if(res){
                 //Process item information
                 auto itm = parse_item();
                 if(!std::get<0>(itm).empty()){
-                    //std::cout << "Index: " << _index << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
-
                     if(_receiver){
                         _receiver->put_dictionary_value("Item", std::get<0>(itm), std::pair(std::get<1>(itm),std::get<2>(itm)));
                     }
-
                 }
-
-
 
                 //Process item claims, one by one
                 auto claims = get()->FindMember(s_claims.c_str());
@@ -382,7 +398,7 @@ public:
             _sync->store(0);
         }
 
-        std::cout << "Parse finished. Index: " << this->_index << std::endl;
+        //std::cout << "Parse finished. Index: " << this->_index << std::endl;
     }
 
 
@@ -418,6 +434,7 @@ private:
 
     std::atomic_bool finish = false;
 
+    std::fstream logFile;
 };
 
 } //namespace
