@@ -15,26 +15,23 @@
 
 //#include "prop_dict.h"
 #include "wiki.h"
+#include "smallthings.h"
 
 using namespace std;
 
 int main (int argc, char* argv[])
 {
+    std::cout << piutils::get_time_string(false) << " started" << std::endl;
+
     if(argc < 2){
         std::cout << "Missing parameters." << "wpars data.json" << std::endl;
         exit(EXIT_FAILURE);
     }
 
-    /*
-    std::shared_ptr<wiki::Properties> ptr_props = std::make_shared<wiki::Properties>();
-    if(!ptr_props->load(std::string(argv[1]))){
-        exit(EXIT_FAILURE);
-    }
-    */
-
     wiki::WiKi wk;
 
-    wk.set_flush_bulk(27);
+    wk.set_bulk_size(1000000); //1M
+    wk.set_flush_bulk(250000); //250K
 
     if(argc >= 3){
         wk.load_properties(argv[2]);
@@ -49,7 +46,9 @@ int main (int argc, char* argv[])
         exit(EXIT_FAILURE);
     }
 
+    //wait untill main thread will finish (TODO: Add signal processor)
     wk.start();
 
+    std::cout << piutils::get_time_string(false) << " finished" << std::endl;
     exit(EXIT_SUCCESS);
 }

@@ -57,7 +57,7 @@ public:
             }
         }
 
-        std::cout << "Dict " << dict_name << " load from: " << f_name << " Size: " << p_dict.size() << std::endl;
+        std::cout << "Dictionary " << dict_name << " loaded from: " << f_name << " Size: " << p_dict_exists.size() << std::endl;
         return count;
     }
 
@@ -82,10 +82,13 @@ public:
     virtual const bool save(const bool flush = false, const std::string& filename = ""){
         bool result = true;
         const auto f_name = (filename.empty() ? dict_filename : filename);
-        std::cout << "Dict " << dict_name << " save to: " << f_name << " Size: " << p_dict.size() << std::endl;
+
+        std::cout << "Dictionary " << dict_name << " save to: " << f_name << " Flush(" << flush << ") Size to save: " << p_dict.size();
+        if(!flush){
+            std::cout << std::endl;
+        }
 
         const std::lock_guard<std::mutex> lock(mtx);
-
         std::fstream outputFile(f_name, std::ios::out | std::ios::app);
         if(outputFile.is_open()){
             outputFile.seekg(0, std::fstream::end);
@@ -105,6 +108,7 @@ public:
             //clean disctionalty after saving
             if(flush){
                 p_dict.clear();
+                std::cout << " Full size: " << p_dict_exists.size() << std::endl;
             }
         }
         else{

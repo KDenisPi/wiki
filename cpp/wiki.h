@@ -188,6 +188,10 @@ public:
         return res;
     }
 
+    /**
+     * @brief
+     *
+     */
     void load_important_properties(){
 /*
         std::vector<pID> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
@@ -200,6 +204,11 @@ public:
     }
 
 
+    /**
+     * @brief
+     *
+     * @param filename
+     */
     void load_position_file(const std::string& filename){
         position_file = filename;
         std::ifstream inputFile(filename);
@@ -217,12 +226,40 @@ public:
         }
     }
 
+    /**
+     * @brief Set the flush bulk object
+     *
+     * @param fl_size
+     */
     void set_flush_bulk(const long fl_size){
         flush_bulk = fl_size;
     }
 
+    /**
+     * @brief Get the flush bulk object
+     *
+     * @return const long
+     */
     inline const long get_flush_bulk() const{
         return flush_bulk;
+    }
+
+    /**
+     * @brief Get the bulk size object
+     *
+     * @return const unsigned long
+     */
+    inline const unsigned long get_bulk_size() const {
+        return bulk_size;
+    }
+
+    /**
+     * @brief Set the bulk size object
+     *
+     * @param bl_size
+     */
+    void set_bulk_size(const unsigned long bl_size){
+        bulk_size = bl_size;
     }
 
 private:
@@ -241,6 +278,7 @@ private:
     std::string position_file;
 
     long flush_bulk = 10000;
+    unsigned long bulk_size = 0;
 
     /**
      * @brief

@@ -37,6 +37,12 @@ public:
         close();
     }
 
+    enum Res : unsigned int {
+        OK          = 0,
+        END_OF_FILE = 1,
+        ERROR       = 2
+    };
+
     /**
      * @brief
      *
@@ -72,7 +78,7 @@ public:
      * @return true
      * @return false
      */
-    bool next(char* buff, size_t buff_size){
+    const Res next(char* buff, size_t buff_size){
         if(fgets(buff, buff_size, fp_prop) != NULL) {
             const auto len = strlen(buff);
             //std::cout << "Length: " << len << " Char: " << buff[len-2] << std::endl;
@@ -80,9 +86,13 @@ public:
                 buff[len-2] = 0;
             }
             pos = ftell(fp_prop);
-            return true;
+            return Res::OK;
         }
-        return false;
+
+        if( std::feof(fp_prop) != 0 )
+            return Res::END_OF_FILE;
+
+        return Res::ERROR;
     }
 
     /**

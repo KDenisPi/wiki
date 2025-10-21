@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include "wiki.h"
+#include "smallthings.h"
 
 namespace wiki {
 
@@ -19,72 +20,77 @@ namespace wiki {
  *
  */
 void WiKi::worker(){
+    unsigned long counter = 0;
+    std::cout << piutils::get_time_string(false) << " Main worker has started" << std::endl;
 
     if(!reader.is_ready()){
         std::cout << "Data reader is not ready" << std::endl;
-        return;
     }
+    else{
+        auto fn_all_done = [&]() {
+            int count = 0;
+            for(int i = 0; i < this->max_threads; i++){
+                count += this->threads_vars[i].load();
+            }
+            return (this->is_finish() || (count == 0));
+        };
 
-    auto fn_all_done = [&]() {
-        int count = 0;
-        for(int i = 0; i < this->max_threads; i++){
-            count += this->threads_vars[i].load();
-        }
-        return (this->is_finish() || (count == 0));
-    };
+        ItemReader::Res read_res = ItemReader::Res::OK;
+        for(;;){
 
-    int counter = 0;
-    bool last_read_success = true;
-    for(;;){
+            for(int i = 0; i < this->max_threads; i++){
+                read_res = this->reader.next(static_cast<char*>(buffers[i].get()), max_buffer_size);
+                if(ItemReader::Res::OK != read_res){
+                    break;
+                }
+                this->threads_vars[i].fetch_add(1);
+                counter++;
+            }
 
-        for(int i = 0; i < this->max_threads; i++){
-            last_read_success = this->reader.next(static_cast<char*>(buffers[i].get()), max_buffer_size);
-            if(!last_read_success){
-                std::cout << "Read error" << std::endl;
+            while(!fn_all_done());
+
+            if(ItemReader::Res::OK != read_res){
+                std::cout << (ItemReader::Res::END_OF_FILE == read_res ? "End of file detected" : "Reading error detected") << std::endl;
                 break;
             }
-            this->threads_vars[i].fetch_add(1);
-            counter++;
+
+            if( is_finish() ){
+                std::cout << " Finish signal detected" << std::endl;
+                break;
+            }
+
+            //flush data
+            if( counter > 0 && get_flush_bulk() > 0 && (counter%get_flush_bulk() == 0)){
+                receiver->flush();
+                std::cout << "Items processed: " << std::to_string(counter) << std::endl;
+            }
+
+            //end bulk processing
+            if( counter > 0 && (counter == get_bulk_size()) ){
+                break;
+            }
         }
 
-        while(!fn_all_done());
+        //save current position in source file
+        save_position_file();
 
-        if(!last_read_success && fn_all_done()){
-            std::cout << "Read error: " << last_read_success << " and nothing to do:" << fn_all_done() << std::endl;
-            break;
-        }
-
-        if(!last_read_success || is_finish()){
-            std::cout << "Read error: " << last_read_success << " Is finish: " << is_finish() << std::endl;
-            break;
-        }
-
-        //flush data
-        if( counter > 0 && get_flush_bulk() > 0 && (counter%get_flush_bulk() == 0)){
-            receiver->flush();
-        }
     }
 
-    std::cout << "Counter: " << std::to_string(counter) << std::endl;
-    std::cout << "File: " << reader.get_filename() << " Position: " << reader.get_pos() << std::endl;
 
-    save_position_file();
-
+    //send finish signal to working threads
     for(int i = 0; i < this->max_threads; i++){
         parsers[i]->set_finish();
     }
-    std::cout << "Wait for child threads" << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(2));
 
     for(int i = 0; i < this->max_threads; i++){
         if(threads[i].joinable()){
-            std::cout << "Join to : " << i << std::endl;
+            std::cout << "Join to : " << i ;
             threads[i].join();
-            std::cout << "Thread finished : " << i << std::endl;
+            std::cout << " Thread finished : " << i << std::endl;
         }
     }
 
-    std::cout << "Main worker finished" << std::endl;
+    std::cout << piutils::get_time_string(false) << " Main worker finished" << std::endl;
 }
 
 }

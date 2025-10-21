@@ -362,7 +362,7 @@ public:
      *
      */
     void worker(){
-        std::cout << "Parse started. Index: " << this->_index << std::endl;
+        //std::cout << "Parse started. Index: " << this->_index << std::endl;
 
         auto fn_no_data = [&]() {
             return (0 == _sync->load());

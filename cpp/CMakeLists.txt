@@ -19,7 +19,7 @@ include_directories(BEFORE
 
 #aux_source_directory(${PROJECT_SOURCE_DIR} PARS_SOURCES)
 
-add_executable(wpars main.cpp prop_dict.cpp wiki.cpp)
+add_executable(wpars main.cpp prop_dict.cpp wiki.cpp smallthings.cpp)
 
 add_executable(test_sread test_sread_parser.cpp smallthings.cpp)
 add_executable(test_props test_props_match.cpp prop_dict.cpp)
