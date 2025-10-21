@@ -45,11 +45,20 @@ public:
      * @return false
      */
     bool init(const std::string filename){
-        fp_prop = fopen(filename.c_str(), "r");
+        items_file = filename;
+        fp_prop = fopen(filename.c_str(), "rb");
         // Check if the file was opened successfully
         if (fp_prop == NULL) {
-            std::cout << "Error reading file " << filename << " Error: " << errno << std::endl; // Print an error message
+            std::cerr << "Error reading file " << filename << " Error: " << errno << std::endl; // Print an error message
             return false;
+        }
+
+        if( pos > 0 ){
+            auto res = std::fseek(fp_prop, pos, SEEK_SET);
+            if( res < 0 ){
+                std::cerr << "Error set position for " << filename << " Error: " << errno << std::endl; // Print an error message
+                return false;
+            }
         }
 
         return true;
@@ -70,6 +79,7 @@ public:
             if(buff[len-1] == '\n' && buff[len-2] == ','){
                 buff[len-2] = 0;
             }
+            pos = ftell(fp_prop);
             return true;
         }
         return false;
@@ -96,10 +106,27 @@ public:
         return (fp_prop != nullptr);
     }
 
+    /**
+     * @brief Get the pos object
+     *
+     * @return const long
+     */
+    const long get_pos() const {
+        return pos;
+    }
+
+    void set_pos( const long start_pos ){
+        pos = start_pos;
+    }
+
+    const auto get_filename() const {
+        return items_file;
+    }
+
 private:
     std::string items_file;
     FILE *fp_prop = nullptr;
-    fpos_t pos;
+    long pos = 0;
     bool loaded = false;
 };
 

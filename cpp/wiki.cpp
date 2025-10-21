@@ -60,7 +60,10 @@ void WiKi::worker(){
         }
     }
 
-    std::cout << "Counter: " <<std::to_string(counter) << std::endl;
+    std::cout << "Counter: " << std::to_string(counter) << std::endl;
+    std::cout << "File: " << reader.get_filename() << " Position: " << reader.get_pos() << std::endl;
+
+    save_position_file();
 
     for(int i = 0; i < this->max_threads; i++){
         parsers[i]->set_finish();

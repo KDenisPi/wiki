@@ -38,6 +38,10 @@ int main (int argc, char* argv[])
         wk.load_properties(argv[2]);
     }
 
+    if(argc >= 4){
+        wk.load_position_file(argv[3]);
+    }
+
     if(!wk.load_source(std::string(argv[1]))){
         std::cout << "Could not load source file" << std::string(argv[1]) << std::endl;
         exit(EXIT_FAILURE);

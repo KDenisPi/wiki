@@ -199,6 +199,24 @@ public:
         props->load_important_property(v_props);
     }
 
+
+    void load_position_file(const std::string& filename){
+        position_file = filename;
+        std::ifstream inputFile(filename);
+        if(inputFile.is_open()){
+            std::string line;
+            while(std::getline(inputFile, line)){
+                long pos = std::stol(line);
+                if(pos > 0){
+                    std::cout << "Start from position : " << pos << std::endl;
+                    reader.set_pos(pos);
+                }
+            }
+
+            inputFile.close();
+        }
+    }
+
 private:
     std::mutex cv_m;
     std::thread th_main;
@@ -212,6 +230,16 @@ private:
     std::shared_ptr<Receiver> receiver;
 
     ItemReader reader;
+    std::string position_file;
+
+    void save_position_file(){
+        std::fstream outputFile(position_file, std::ios::out);
+        if(outputFile.is_open()){
+            auto pos = reader.get_pos();
+            outputFile << std::to_string(pos) << std::endl;
+            outputFile.close();
+        }
+    }
 
 };
 
