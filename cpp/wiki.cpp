@@ -68,7 +68,7 @@ void WiKi::worker(){
             //flush data
             if( get_flush_bulk() > 0 && ((counter/max_threads) % get_flush_bulk()) == 0){
                 receiver->flush();
-                std::cout << "Items processed: " << std::to_string(counter) << " Per thread: " << std::to_string(counter/max_threads) << std::endl;
+                std::cout << piutils::get_time_string(false) << " Items processed: " << std::to_string(counter) << " Per thread: " << std::to_string(counter/max_threads) << std::endl;
             }
 
             //end bulk processing
