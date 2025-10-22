@@ -59,14 +59,20 @@ void WiKi::worker(){
                 break;
             }
 
+            /*
+            if(((counter/max_threads) % 1000) == 0){
+                std::cout << "Items processed: " << std::to_string(counter) << " " << std::to_string(counter/max_threads) << " " << get_flush_bulk() <<  std::endl;
+            }
+            */
+
             //flush data
-            if( counter > 0 && get_flush_bulk() > 0 && (counter%get_flush_bulk() == 0)){
+            if( get_flush_bulk() > 0 && ((counter/max_threads) % get_flush_bulk()) == 0){
                 receiver->flush();
-                std::cout << "Items processed: " << std::to_string(counter) << std::endl;
+                std::cout << "Items processed: " << std::to_string(counter) << " Per thread: " << std::to_string(counter/max_threads) << std::endl;
             }
 
             //end bulk processing
-            if( counter > 0 && (counter == get_bulk_size()) ){
+            if( (counter/max_threads) >= get_bulk_size() ){
                 break;
             }
         }
