@@ -34,6 +34,9 @@ public:
         for_each(vals.begin(), vals.end(), [this](std::string& prop){
             dicts[prop] = std::make_shared<DictClass<dict_key, dict_val>>(prop);
         });
+
+        //we do not want to load Items dictionary because we do not expect duplicate values
+        dicts["Item"]->set_load_at_start(false);
     }
 
     /**
@@ -76,7 +79,9 @@ public:
     virtual bool load() override {
         std::for_each(dicts.begin(), dicts.end(), [](const std::pair<pID, std::shared_ptr<DictClass<dict_key, dict_val>>>& dict) {
                 if(dict.second.get()){
-                    dict.second->load();
+                    if(dict.second->get_load_at_start()){
+                        dict.second->load();
+                    }
                 }
             });
 

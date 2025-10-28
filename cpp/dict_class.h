@@ -139,6 +139,26 @@ public:
     }
 
 
+    /**
+     * @brief Get the load at start object
+     *
+     * @return true
+     * @return false
+     */
+    inline bool get_load_at_start() const {
+        return load_at_start;
+    }
+
+
+    /**
+     * @brief Set the load at start object
+     *
+     * @param load_values
+     */
+    inline void set_load_at_start(const bool load_values){
+        load_at_start = load_values;
+    }
+
 private:
     std::mutex mtx;
     std::map<K,V> p_dict;
@@ -146,6 +166,8 @@ private:
 
     std::string dict_name;
     std::string dict_filename;
+
+    bool load_at_start = true; //we will load values from the storage at start by default but will change it sometimes
 };
 
 }//namespace wiki
