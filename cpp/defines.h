@@ -15,6 +15,7 @@
 #include <tuple>
 #include <string>
 #include <memory>
+#include <vector>
 
 namespace wiki{
 
@@ -33,6 +34,8 @@ using item_info = std::tuple<std::string, std::string, std::string>;
 
 using dict_key = std::string;
 using dict_val = std::tuple<std::string, std::string>;
+
+using prop_ids = std::vector<std::string>;
 
 }
 

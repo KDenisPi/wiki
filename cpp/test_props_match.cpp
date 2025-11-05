@@ -24,17 +24,17 @@
 
 int main (int argc, char* argv[])
 {
-    int status = EXIT_FAILURE;
+    int status = EXIT_SUCCESS;
     if(argc < 3){
-        std::cout << "File names are absent. app prop_dict.json item.json" << std::endl;
-        exit(status);
+        std::cout << "Absent necassary data files." << std::endl << "Using: test_props prop_dict.json item.json" << std::endl;
+        exit(EXIT_FAILURE);
     }
 
     std::shared_ptr<char> buffer = std::shared_ptr<char>(new char[MAX_LINE_LENGTH]);// Declare a character array (buffer) to store the line
 
     std::shared_ptr<wiki::Properties> ptr_props = std::make_shared<wiki::Properties>();
     if(!ptr_props->load(std::string(argv[1]))){
-        exit(status);
+        exit(EXIT_FAILURE);
     }
 
     std::cout << argv[1] << " Props count: " << ptr_props->MemberCount() << std::endl;
@@ -56,7 +56,7 @@ int main (int argc, char* argv[])
 
     std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
     if(ptr_reader->init(std::string(argv[2]))){
-        if(ptr_reader->next(buffer.get(), MAX_LINE_LENGTH)){
+        if(wiki::ItemReader::Res::OK == ptr_reader->next(buffer.get(), MAX_LINE_LENGTH)){
             std::atomic_int sync;
             std::shared_ptr<char> fake_buff;
             std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverEasy>();
@@ -74,6 +74,18 @@ int main (int argc, char* argv[])
                     std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: "
                         << v_claims->value.MemberCount() << std::endl;
 
+                    //Detect "Instance of" property for this Item
+                    auto p31 = v_claims->value.FindMember(ptr_item->s_P31.c_str());
+                    if( v_claims->value.MemberEnd() != p31){
+                        wiki::prop_ids pids;
+                        auto insts = ptr_item->get_instance_of(p31, pids);
+                        std::cout << "P31 Instance of:";
+                        for(auto p31_inst : pids){
+                            std::cout << " " << p31_inst;
+                        }
+                        std::cout << std::endl;
+                    }
+
                     auto ptr_props_doc = ptr_props->get();
                     for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
                         ptr_item->parse_claim(cl_v);
@@ -82,8 +94,13 @@ int main (int argc, char* argv[])
                 else
                     std::cout << "No such member: " << "claims" << std::endl;
             }
-            status = EXIT_SUCCESS;
+            else{
+                std::cout << "No such parse buffer: " << std::endl;
+            }
         }
+    }
+    else{
+        std::cout << "Could not init reader for: " << std::string(argv[2]) << std::endl;
     }
 
     exit(status);

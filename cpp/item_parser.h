@@ -28,6 +28,16 @@ namespace wiki {
 
 using doc_ptr = std::shared_ptr<rapidjson::Document>;
 
+/**
+ * @brief
+ * 0 - property ID
+ * 1 - key value for this data item
+ * 2 - type of key value
+ * 3 - additional parameter
+ */
+using data_value = std::tuple<std::string, std::string, std::string, std::string>;
+
+
 class ItemParser{
 public:
     /**
@@ -132,6 +142,8 @@ public:
     const std::string s_time = "time";
     const std::string s_tmz = "timezone";
 
+    const std::string s_P31 = "P31"; //"Instance of" property
+
     /**
      * @brief
      *
@@ -171,6 +183,14 @@ public:
         return (val == it->value.MemberEnd() ? std::string() : std::string(val->value.GetString()));
     }
 
+    /**
+     * @brief Get the number value object
+     *
+     * @tparam T
+     * @param it
+     * @param name
+     * @return T
+     */
     template <typename T>
     inline T get_number_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& name){
         auto val = it->value.FindMember(name.c_str());
@@ -190,6 +210,43 @@ public:
         return (T)0;
     }
 
+    /**
+     * @brief
+     *
+     * @tparam T
+     * @param it
+     * @param pname
+     * @param result
+     * @return const int
+     */
+    template <typename T>
+    const int parse_property(const rapidjson::Value::ConstMemberIterator& it, const std::string& pname, std::vector<T>& result){
+        if(it->value.IsArray()){
+            const auto property_data = it->value.GetArray();
+            for(auto p_data = property_data.Begin(); p_data != property_data.End(); ++p_data){
+                const auto data_obj = p_data->GetObject();
+                const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
+                if(data_obj.MemberEnd() != mainsnak){
+                    auto res = parse_data_value(mainsnak, pname);
+                    if(!std::get<0>(res).empty()){
+                        result.push_back(pack<T>(res));
+                    }
+                }
+            }
+        }
+
+        return result.size();
+    }
+
+    /**
+     * @brief
+     *
+     * @tparam T
+     * @param data
+     * @return const T
+     */
+    template <typename T>
+    const T pack(const data_value& data);
 
     /**
      * @brief Get the str sub value object
@@ -278,15 +335,6 @@ public:
 
     /**
      * @brief
-     * 0 - property ID
-     * 1 - key value for this data item
-     * 2 - type of key value
-     * 3 - additional parameter
-     */
-    using data_value = std::tuple<std::string, std::string, std::string, std::string>;
-
-    /**
-     * @brief
      *
      * @param it
      * @param prop_name
@@ -295,8 +343,13 @@ public:
     const data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name){
         auto datatype = get_str_value(it, s_datatype);
         auto property = get_str_value(it, s_property);
-        std::string key_value;
 
+        //We are interesting only for properties with specisfied name if it set
+        if(!prop_name.empty() && (property != prop_name)){
+            return std::make_tuple("", "", "", "");
+        }
+
+        std::string key_value;
         auto datavalue = it->value.FindMember(s_datavalue.c_str());
         if(it->value.MemberEnd() != datavalue){
             const auto dtype = get_str_value(datavalue, s_type);
@@ -317,8 +370,26 @@ public:
         return std::make_tuple("", "", "", "");
     }
 
+    /**
+     * @brief
+     *
+     * @param value
+     * @param label
+     */
     void print_type(const rapidjson::Value& value, const std::string& label = ""){
         std::cout << label << " Object: " << value.IsObject() << " Array: " << value.IsArray() << " String: " << value.IsString() << std::endl;
+    }
+
+    /**
+     * @brief Get the instance of object
+     *
+     * @param it
+     * @param vinsts
+     * @return const int
+     */
+    const int get_instance_of(const rapidjson::Value::ConstMemberIterator& it, prop_ids& vinsts){
+        auto res = parse_property<std::string>(it, s_P31, vinsts);
+        return res;
     }
 
     /**
@@ -332,25 +403,12 @@ public:
             return;
         }
 
-        //std::cout << "Properly : " << prop_name << std::endl;
-
-        if(it->value.IsArray()){
-            const auto property_data = it->value.GetArray();
-            for(auto p_data = property_data.Begin(); p_data != property_data.End(); ++p_data){
-
-                //std::cout << " Data Object: " << p_data->IsObject() << " Array: " << p_data->IsArray() << " String: " << p_data->IsString() << std::endl;
-                const auto data_obj = p_data->GetObject();
-                const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
-                if(data_obj.MemberEnd() != mainsnak){
-                    auto res = parse_data_value(mainsnak, prop_name);
-                    if(!std::get<0>(res).empty()){
-                        auto prop = _props->get_prop(std::get<0>(res));
-
-                        if(_receiver){
-                            _receiver->put_dictionary_value(std::get<0>(res), std::get<1>(res), std::pair(std::get<2>(res), std::get<3>(res)));
-                        }
-                    }
-                }
+        std::vector<data_value> result;
+        const auto r_count = parse_property<data_value>(it, prop_name, result);
+        std::cout << "Parse claim. Property: " << prop_name << " Items:" << r_count << std::endl;
+        for(data_value res : result){
+            if(_receiver){
+                _receiver->put_dictionary_value(std::get<0>(res), std::get<1>(res), std::pair(std::get<2>(res), std::get<3>(res)));
             }
         }
     }
@@ -380,7 +438,7 @@ public:
             if(res){
                 //Process item information
                 auto itm = parse_item();
-                if(!std::get<0>(itm).empty()){
+                if( !std::get<0>(itm).empty() ){
                     if(_receiver){
                         _receiver->put_dictionary_value("Item", std::get<0>(itm), std::pair(std::get<1>(itm),std::get<2>(itm)));
                     }
@@ -388,10 +446,18 @@ public:
 
                 //Process item claims, one by one
                 auto claims = get()->FindMember(s_claims.c_str());
-                if(get()->MemberEnd() != claims){
-                    for(auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim){
-                        parse_claim(claim);
+                if( get()->MemberEnd() != claims ){
+                    //Detect "Instance of" property for this Item
+                    auto p31 = claims->value.FindMember(s_P31.c_str());
+                    if( claims->value.MemberEnd() != p31){
+                        prop_ids pids;
+                        auto insts = get_instance_of(p31, pids);
+
+                        for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
+                            parse_claim(claim);
+                        }
                     }
+
                 }
             }
 
@@ -436,6 +502,7 @@ private:
 
     std::fstream logFile;
 };
+
 
 } //namespace
 #endif
