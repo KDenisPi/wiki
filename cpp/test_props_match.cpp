@@ -56,48 +56,54 @@ int main (int argc, char* argv[])
 
     std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
     if(ptr_reader->init(std::string(argv[2]))){
-        if(wiki::ItemReader::Res::OK == ptr_reader->next(buffer.get(), MAX_LINE_LENGTH)){
-            std::atomic_int sync;
-            std::shared_ptr<char> fake_buff;
-            std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverEasy>();
-            std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, ptr_props, receiver);
-            if(ptr_item->load(buffer.get())){
-                auto ptr_item_doc = ptr_item->get();
 
-                auto itm = ptr_item->parse_item();
-                if(!std::get<0>(itm).empty()){
-                    std::cout << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
-                }
+        auto r_res = ptr_reader->next(buffer.get(), MAX_LINE_LENGTH);
+        while(r_res != wiki::ItemReader::END_OF_FILE){
+            if(wiki::ItemReader::Res::OK == r_res){
+                std::atomic_int sync;
+                std::shared_ptr<char> fake_buff;
+                std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverEasy>();
+                std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, ptr_props, receiver);
+                if(ptr_item->load(buffer.get())){
+                    auto ptr_item_doc = ptr_item->get();
 
-                auto v_claims = ptr_item_doc->FindMember("claims");
-                if(v_claims != ptr_item_doc->MemberEnd()){
-                    std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: "
-                        << v_claims->value.MemberCount() << std::endl;
+                    auto itm = ptr_item->parse_item();
+                    if(!std::get<0>(itm).empty()){
+                        std::cout << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
+                    }
 
-                    //Detect "Instance of" property for this Item
-                    auto p31 = v_claims->value.FindMember(ptr_item->s_P31.c_str());
-                    if( v_claims->value.MemberEnd() != p31){
-                        wiki::prop_ids pids;
-                        auto insts = ptr_item->get_instance_of(p31, pids);
-                        std::cout << "P31 Instance of:";
-                        for(auto p31_inst : pids){
-                            std::cout << " " << p31_inst;
+                    auto v_claims = ptr_item_doc->FindMember("claims");
+                    if(v_claims != ptr_item_doc->MemberEnd()){
+                        std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: "
+                            << v_claims->value.MemberCount() << std::endl;
+
+                        //Detect "Instance of" property for this Item
+                        auto p31 = v_claims->value.FindMember(ptr_item->s_P31.c_str());
+                        if( v_claims->value.MemberEnd() != p31){
+                            wiki::prop_ids pids;
+                            auto insts = ptr_item->get_instance_of(p31, pids);
+                            std::cout << "P31 Instance of:";
+                            for(auto p31_inst : pids){
+                                std::cout << " " << p31_inst;
+                            }
+                            std::cout << std::endl;
                         }
-                        std::cout << std::endl;
-                    }
 
-                    auto ptr_props_doc = ptr_props->get();
-                    for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
-                        ptr_item->parse_claim(cl_v);
+                        auto ptr_props_doc = ptr_props->get();
+                        for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
+                            ptr_item->parse_claim(cl_v);
+                        }
                     }
+                    else
+                        std::cout << "No such member: " << "claims" << std::endl;
                 }
-                else
-                    std::cout << "No such member: " << "claims" << std::endl;
+                else{
+                    std::cout << "No such parse buffer: " << std::endl;
+                }
             }
-            else{
-                std::cout << "No such parse buffer: " << std::endl;
-            }
+            r_res = ptr_reader->next(buffer.get(), MAX_LINE_LENGTH);
         }
+
     }
     else{
         std::cout << "Could not init reader for: " << std::string(argv[2]) << std::endl;
