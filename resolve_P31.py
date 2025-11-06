@@ -9,7 +9,7 @@ filename_P31_out = "P31_out.csv"
 
 filename_items = "Item.csv"
 
-log_size = 100
+log_size = 500000
 
 def load_P31(file_name:str) -> dict:
     """Load P31 file"""
@@ -50,13 +50,16 @@ def resolve_P31(file_name:str, props:dict) -> int:
             q_idx = line[0:pos]
             if q_idx in props:
                 props[q_idx] = props[q_idx] + line[pos+1:].strip()
-                print(props[q_idx])
+                #print(props[q_idx])
                 resolved += 1
             processed += 1
 
             if (processed % log_size) == 0:
                 print("Processed: {}".format(processed))
 
+            if resolved == len(props):
+                print("All P31 resolved")
+                break
             line = fd.readline()
         fd.close()
     return resolved
