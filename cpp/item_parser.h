@@ -17,6 +17,8 @@
 #include <chrono>
 #include <tuple>
 #include <fstream>
+#include <string>
+#include <vector>
 
 #include "rapidjson/document.h"
 
@@ -142,6 +144,9 @@ public:
     const std::string s_time = "time";
     const std::string s_tmz = "timezone";
 
+    const std::string s_qualifiers = "qualifiers";
+    const std::string s_qualifiers_order = "qualifiers-order";
+
     const std::string s_P31 = "P31"; //"Instance of" property
 
     /**
@@ -210,6 +215,32 @@ public:
         return (T)0;
     }
 
+    const std::string parse_qualifiers(const rapidjson::Value::ConstObject& obj){
+        std::vector<std::string> q_props = {"P4649", "P805"};
+        const auto q_order = obj.FindMember(s_qualifiers_order.c_str());
+        if(obj.MemberEnd() != q_order){
+            //print_type(q_order->value);
+            const auto q_order_ar = q_order->value.GetArray();
+            for(auto q_data = q_order_ar.Begin(); q_data != q_order_ar.End(); ++q_data){
+                const auto q_val = q_data->GetString();
+                for(auto p : q_props){
+                    if(p == q_val){
+                        const auto q_q = obj.FindMember(s_qualifiers.c_str());
+                        if(obj.MemberEnd() != q_q){
+                            const auto q_q_p = q_q->value.FindMember(p.c_str());    //get PXXX array
+                            const auto pppp = q_q_p->value[0].GetObject();
+                            const auto st = pppp.FindMember(s_snaktype.c_str());
+                            auto res = parse_data_value(st);
+                            std::cout << "Q: " << q_val << std::endl;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return std::string();
+    }
+
     /**
      * @brief
      *
@@ -227,8 +258,15 @@ public:
                 const auto data_obj = p_data->GetObject();
                 const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
                 if(data_obj.MemberEnd() != mainsnak){
+                    std::cout << "PP:" << pname << std::endl;
                     auto res = parse_data_value(mainsnak, pname);
                     if(!std::get<0>(res).empty()){
+                        //there id date/time - try to find qualifiers
+                        if(is_type_time(std::get<2>(res))){
+                            const auto q_val = parse_qualifiers(data_obj);
+
+                        }
+
                         result.push_back(pack<T>(res));
                     }
                 }
@@ -340,7 +378,7 @@ public:
      * @param prop_name
      * @return const data_value
      */
-    const data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name){
+    const data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name = ""){
         auto datatype = get_str_value(it, s_datatype);
         auto property = get_str_value(it, s_property);
 
@@ -405,11 +443,14 @@ public:
 
         std::vector<data_value> result;
         const auto r_count = parse_property<data_value>(it, prop_name, result);
-        std::cout << "Parse claim. Property: " << prop_name << " Items:" << r_count << std::endl;
+        std::cout << "Property: " << prop_name << " Items:" << r_count << std::endl;
         for(data_value res : result){
+            std::cout << "0:" << std::get<0>(res) << " 1:" << std::get<1>(res) << " 2:" << std::get<2>(res) << " 3:" << std::get<3>(res) << std::endl;
+            /*
             if(_receiver){
                 _receiver->put_dictionary_value(std::get<0>(res), std::get<1>(res), std::pair(std::get<2>(res), std::get<3>(res)));
             }
+            */
         }
     }
 
