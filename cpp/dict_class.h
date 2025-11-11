@@ -94,6 +94,7 @@ public:
             outputFile.seekg(0, std::fstream::end);
             for( auto it = p_dict.begin(); it != p_dict.end(); ++it ){
                 if(flush){
+                    //Add Item to list have already processed
                     p_dict_exists[it->first] = "";
                 }
 

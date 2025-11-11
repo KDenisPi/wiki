@@ -30,8 +30,8 @@ int main (int argc, char* argv[])
 
     wiki::WiKi wk;
 
-    wk.set_bulk_size(200000); //200K * MAX_PARSING_THREADS = 1.2M
-    wk.set_flush_bulk(40000); //40K * MAX_PARSING_THREADS = 240K
+    wk.set_bulk_size(5000000); //5M * MAX_PARSING_THREADS = 30M
+    wk.set_flush_bulk(100000); //100K * MAX_PARSING_THREADS = 600K
 
     if(argc >= 3){
         wk.load_properties(argv[2]);

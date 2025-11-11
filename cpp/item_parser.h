@@ -181,11 +181,23 @@ public:
      *
      * @param it
      * @param name
-     * @return auto
+     * @return const auto
      */
-    inline auto get_str_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& name){
+     inline const auto get_str_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& name){
         auto val = it->value.FindMember(name.c_str());
         return (val == it->value.MemberEnd() ? std::string() : std::string(val->value.GetString()));
+    }
+
+    /**
+     * @brief Get the obj str value object
+     * 
+     * @param obj 
+     * @param name 
+     * @return const auto 
+     */
+    inline const auto get_obj_str_value(const rapidjson::Value::ConstObject& obj, const std::string& name){
+        const auto item = obj.FindMember(name.c_str());
+        return (obj.MemberEnd() == item ? std::string() : std::string(item->value.GetString()));
     }
 
     /**
@@ -215,7 +227,7 @@ public:
         return (T)0;
     }
 
-    const std::string parse_qualifiers(const rapidjson::Value::ConstObject& obj){
+    const data_value parse_qualifiers(const rapidjson::Value::ConstObject& obj){
         std::vector<std::string> q_props = {"P4649", "P805"};
         const auto q_order = obj.FindMember(s_qualifiers_order.c_str());
         if(obj.MemberEnd() != q_order){
@@ -225,20 +237,23 @@ public:
                 const auto q_val = q_data->GetString();
                 for(auto p : q_props){
                     if(p == q_val){
-                        const auto q_q = obj.FindMember(s_qualifiers.c_str());
-                        if(obj.MemberEnd() != q_q){
-                            const auto q_q_p = q_q->value.FindMember(p.c_str());    //get PXXX array
-                            const auto pppp = q_q_p->value[0].GetObject();
-                            const auto st = pppp.FindMember(s_snaktype.c_str());
-                            auto res = parse_data_value(st);
-                            std::cout << "Q: " << q_val << std::endl;
-                            break;
+                        const auto q_qualifs = obj.FindMember(s_qualifiers.c_str());
+                        if(obj.MemberEnd() != q_qualifs){
+                            const auto qual_arry = q_qualifs->value.FindMember(p.c_str());    //get PXXX array
+                            const auto qual_first = qual_arry->value[0].GetObject();
+                            auto res = pasrse_obj_data_value(qual_first);
+                            
+                            std::cout << "Q P: " << q_val << " Val: " << std::get<1>(res) << std::endl;
+                            if(!std::get<2>(res).empty()){
+                                return res;
+                            }
                         }
                     }
                 }
             }
         }
-        return std::string();
+
+        return std::make_tuple("", "", "", "");
     }
 
     /**
@@ -258,13 +273,15 @@ public:
                 const auto data_obj = p_data->GetObject();
                 const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
                 if(data_obj.MemberEnd() != mainsnak){
-                    std::cout << "PP:" << pname << std::endl;
                     auto res = parse_data_value(mainsnak, pname);
                     if(!std::get<0>(res).empty()){
+                        //std::cout << "parse_property PP:" << pname << std::endl;
                         //there id date/time - try to find qualifiers
                         if(is_type_time(std::get<2>(res))){
                             const auto q_val = parse_qualifiers(data_obj);
-
+                            if(!std::get<1>(q_val).empty()){
+                                res = std::make_tuple(std::get<0>(res), std::get<1>(res), std::get<2>(res), std::get<1>(q_val));
+                            }
                         }
 
                         result.push_back(pack<T>(res));
@@ -378,7 +395,7 @@ public:
      * @param prop_name
      * @return const data_value
      */
-    const data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name = ""){
+    data_value parse_data_value(const rapidjson::Value::ConstMemberIterator& it, const std::string& prop_name = ""){
         auto datatype = get_str_value(it, s_datatype);
         auto property = get_str_value(it, s_property);
 
@@ -406,6 +423,45 @@ public:
         }
 
         return std::make_tuple("", "", "", "");
+    }
+
+
+    /**
+     * @brief 
+     * 
+     * @param obj 
+     * @param prop_name 
+     * @return const data_value 
+     */
+    data_value pasrse_obj_data_value(const rapidjson::Value::ConstObject& obj, const std::string& prop_name = ""){
+        auto datatype = get_obj_str_value(obj, s_datatype);
+        auto property = get_obj_str_value(obj, s_property);
+
+        //We are interesting only for properties with specisfied name if it set
+        if(!prop_name.empty() && (property != prop_name)){
+            return std::make_tuple("", "", "", "");
+        }
+
+        std::string key_value;
+        auto datavalue = obj.FindMember(s_datavalue.c_str());
+        if(obj.MemberEnd() != datavalue){
+            const auto dtype = get_str_value(datavalue, s_type);
+            auto value = datavalue->value.FindMember(s_value.c_str());
+            if(datavalue->value.MemberEnd() != value){
+                if(is_type_wikiid(dtype)){
+                    key_value = get_str_value(value, s_id);
+                    return std::make_tuple(property, key_value, dtype, "");
+                }
+                else if(is_type_time(dtype)){
+                    key_value = get_str_value(value, s_time);
+                    auto dmz = get_number_value<int>(value, s_tmz);
+                    return std::make_tuple(property, key_value, dtype, std::to_string(dmz));
+                }
+            }
+        }
+
+        return std::make_tuple("", "", "", "");
+
     }
 
     /**
