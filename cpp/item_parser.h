@@ -190,10 +190,10 @@ public:
 
     /**
      * @brief Get the obj str value object
-     * 
-     * @param obj 
-     * @param name 
-     * @return const auto 
+     *
+     * @param obj
+     * @param name
+     * @return const auto
      */
     inline const auto get_obj_str_value(const rapidjson::Value::ConstObject& obj, const std::string& name){
         const auto item = obj.FindMember(name.c_str());
@@ -227,8 +227,17 @@ public:
         return (T)0;
     }
 
+    /**
+     * @brief
+     *
+     * @param obj
+     * @return const data_value
+     */
     const data_value parse_qualifiers(const rapidjson::Value::ConstObject& obj){
+        //P4649;identity of subject in context
+        //P805;statement is subject of;(qualifying) item that describes the relation identified in this statement
         std::vector<std::string> q_props = {"P4649", "P805"};
+
         const auto q_order = obj.FindMember(s_qualifiers_order.c_str());
         if(obj.MemberEnd() != q_order){
             //print_type(q_order->value);
@@ -242,7 +251,7 @@ public:
                             const auto qual_arry = q_qualifs->value.FindMember(p.c_str());    //get PXXX array
                             const auto qual_first = qual_arry->value[0].GetObject();
                             auto res = pasrse_obj_data_value(qual_first);
-                            
+
                             std::cout << "Q P: " << q_val << " Val: " << std::get<1>(res) << std::endl;
                             if(!std::get<2>(res).empty()){
                                 return res;
@@ -427,11 +436,11 @@ public:
 
 
     /**
-     * @brief 
-     * 
-     * @param obj 
-     * @param prop_name 
-     * @return const data_value 
+     * @brief
+     *
+     * @param obj
+     * @param prop_name
+     * @return const data_value
      */
     data_value pasrse_obj_data_value(const rapidjson::Value::ConstObject& obj, const std::string& prop_name = ""){
         auto datatype = get_obj_str_value(obj, s_datatype);

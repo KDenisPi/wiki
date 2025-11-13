@@ -198,6 +198,10 @@ public:
                 "P570", "P571", "P577", "P585", "P793", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
             "P4647", "P9899", "P10673"};
 */
+        //P31;instance of;
+        //type to which this subject corresponds/belongs. Different from P279 (subclass of);
+        //for example: K2 is an instance of mountain; volcanoes form a subclass of mountains,
+        //and the volcano is a type (instance) of volcanic landform
         std::vector<pID> v_props = {"P31"};
 
         props->load_important_property(v_props);

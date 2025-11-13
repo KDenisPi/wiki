@@ -1,0 +1,80 @@
+General idea.
+1. Select dates for all WiKi items related to interesting groups (people, musical/art/write works. etc)
+2. Show this information separated by century, type of item etc
+3. Select information for "en" langueage and additional too ("ru" only now)
+
+
+Process description
+1. Process all items and Select all posiible values for P31 (instance of, type to which this subject corresponds/belongs)
+2. Select interesting us types of instances from the list of all values for P31 ("5.1 List of interesting instances (P31)")
+3. Process all iteam again and select now
+3.1  Get P31 property values (usually many values)for an item. If there is no property value from "5.1 List of interesting instances (P31)" ignore this Item.
+3.2. Detect Item information and save it - storage structure ItemID, Label(en), Description(en)
+3.3. Detect the same information but for another languages (only "ru" for now) - storage structure ItemID, lng, label, description
+3.4. Select all date/time information for properties (see 5.2 List of important properties)
+Storage structure - ItemID, PID(property ID), ITIME(time/date string), IADD(time additinal information), QID (qualifiers, usually ItemID)
+
+
+5.1 List of interesting instances (P31)
+Current list provided below. It can be update later.
+
+Q5; human; any single member of Homo sapiens, unique extant species of the genus Homo
+
+Q13418847; historical event; particular incident in history that brings about a historical change
+Q1656682; event; temporary and scheduled happening, like a conference, festival, competition or similar
+Q58687420; cultural event; event of cultural kind
+Q24336466; mythical event; event that only appears in myths and legends
+Q30111082; political event; temporary and scheduled happening with political nature, origin, or consequences
+Q2680861; transient astronomical event; briefly-observed celestial event
+Q55814; extinction event; widespread and rapid decrease in the amount of life on earth
+Q2245405; key event; class of items used with property 'significant event' (P793)
+Q113162275; music event; event where music is performed
+Q52260246; scientific event; type of event;  occurrence of scientific interest, import, or purpose
+Q110799181; in-person event; event held in person
+Q106518893; entity in event; 
+Q463796; impact event; collision of two astronomical objects with measurable effects
+Q1568205; literary event; 
+Q2136042; arts event; 
+Q117769381; social event; occasion where people assemble a series of events
+Q109975697; geological event; type of event
+Q108586636; form of event; metaclass, grouping forms and types of events by specificity
+
+Q105543609; musical work/composition; Wikidata metaclass;  legal concept of uniquely identifiable piece or work of music, either vocal or instrumental;  NOT applicable to recordings, broadcasts, or individual publications of music in printed or digital form or on physical media
+Q107487333; type of musical work/composition; Wikidata metaclass
+Q2188189; musical work; generic term for any work of art related to music, i.e. songs, compositions, groups of compositions, sheet music, melodies, albums, musical films, etc.
+Q207628; composed musical work; original piece or work of music, either vocal or instrumental
+Q22965078; Wikidata property for items about musical works; type of Wikidata property
+Q28146956; Wikidata property to identify musical works; Wikidata property what identify musical works
+
+
+Q12737077; occupation; label applied to a person based on an activity they participate in
+Q135106813; musical occupation; main vocalist
+Q15839299; theatrical occupation; occupation related to the performing arts
+Q63187345; religious occupation; occupation or profession that serves a purpose within the context of a religion
+Q66666236; Wikimedia list of persons by occupation; page on a Wikimedia project listing persons by their occupation
+
+----
+Q6256; country; distinct territorial body or political entity
+Q2418896; part of the world; continent with islands in nearby waters
+Q5107; continent; large landmass identified by convention
+
+
+5.2 List of important properties. 
+It can be updated after check some selected items.
+
+P569; date of birth; date on which the subject was born
+P570; date of death; date on which the subject died
+P571; inception; time when an entity begins to exist;  for date of official opening use P1619
+P575; time of discovery or invention; date or point in time when the item was discovered or invented
+P577; publication date; date or point in time when a work was first published or released
+P580; start time; time an entity begins to exist or a statement starts being valid
+P582; end time; moment when an entity ceases to exist and a statement stops being entirely valid or no longer be true
+P585; point in time; date something took place, existed or a statement was true;  for providing time use the "refine date" property (P4241)
+P1619; date of official opening; date or point in time a place, organization, or event officially opened
+P3999; date of official closure; date of official closure of a building or event
+P6949; announcement date; time of the first public presentation of a subject by the creator, of information by the media
+P7124; date of the first one; qualifier: when the first element of a quantity appeared/took place
+P7125; date of the latest one; qualifier: when the latest element of a quantity appeared/took place
+P10135; recording date; the date when a recording was made
+P10673; debut date; date when a person or group is considered to have "debuted"
+
