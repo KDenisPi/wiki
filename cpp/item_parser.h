@@ -37,7 +37,7 @@ using doc_ptr = std::shared_ptr<rapidjson::Document>;
  * 2 - type of key value
  * 3 - additional parameter
  */
-using data_value = std::tuple<std::string, std::string, std::string, std::string>;
+using data_value = std::vector<std::string>; //std::tuple<std::string, std::string, std::string, std::string>;
 
 
 class ItemParser{
@@ -240,7 +240,6 @@ public:
 
         const auto q_order = obj.FindMember(s_qualifiers_order.c_str());
         if(obj.MemberEnd() != q_order){
-            //print_type(q_order->value);
             const auto q_order_ar = q_order->value.GetArray();
             for(auto q_data = q_order_ar.Begin(); q_data != q_order_ar.End(); ++q_data){
                 const auto q_val = q_data->GetString();
@@ -251,9 +250,9 @@ public:
                             const auto qual_arry = q_qualifs->value.FindMember(p.c_str());    //get PXXX array
                             const auto qual_first = qual_arry->value[0].GetObject();
                             auto res = pasrse_obj_data_value(qual_first);
-
-                            std::cout << "Q P: " << q_val << " Val: " << std::get<1>(res) << std::endl;
-                            if(!std::get<2>(res).empty()){
+                            if(!res.empty()){
+                                std::cout << "Q P: " << q_val << " Val: ";
+                                print(res);
                                 return res;
                             }
                         }
@@ -262,7 +261,7 @@ public:
             }
         }
 
-        return std::make_tuple("", "", "", "");
+        return data_value();
     }
 
     /**
@@ -283,13 +282,13 @@ public:
                 const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
                 if(data_obj.MemberEnd() != mainsnak){
                     auto res = parse_data_value(mainsnak, pname);
-                    if(!std::get<0>(res).empty()){
+                    if( !res.empty() ){
                         //std::cout << "parse_property PP:" << pname << std::endl;
                         //there id date/time - try to find qualifiers
-                        if(is_type_time(std::get<2>(res))){
+                        if( is_type_time(get(res,2)) ){
                             const auto q_val = parse_qualifiers(data_obj);
-                            if(!std::get<1>(q_val).empty()){
-                                res = std::make_tuple(std::get<0>(res), std::get<1>(res), std::get<2>(res), std::get<1>(q_val));
+                            if( !get(q_val,1).empty() ){
+                                res.push_back(get(q_val,1));
                             }
                         }
 
@@ -300,6 +299,10 @@ public:
         }
 
         return result.size();
+    }
+
+    inline const std::string get(const std::vector<std::string>& vals, const int index = 0){
+        return ( vals.size() >= index ? vals[index] : std::string());
     }
 
     /**
@@ -372,14 +375,36 @@ public:
      *
      * @return item_info
      */
-    item_info parse_item(){
+    item_info parse_item(const std::vector<std::string> lngs = {}){
+        std::vector<std::string> lng_info;
         auto doc = get();
 
         const auto id = get_name(doc, s_id);
+
+        if(id.empty()){ //should not be
+            return std::make_tuple(std::string(), lng_info);
+        }
+
         const auto label = get_sub_name(doc, s_label, s_lng_en, s_value);
         const auto descr = get_sub_name(doc, s_descr, s_lng_en, s_value);
 
-        return std::make_tuple(id, label, descr);
+        lng_info.push_back(label);
+        lng_info.push_back(descr);
+
+        //Load label and description for another languages
+        if(!lngs.empty()){
+            for(auto lng : lngs){
+                const auto label_lng = get_sub_name(doc, s_label, lng, s_value);
+                if(!label_lng.empty()){
+                    const auto descr_lng = get_sub_name(doc, s_descr, lng, s_value);
+                    lng_info.push_back(lng);
+                    lng_info.push_back(label_lng);
+                    lng_info.push_back(descr_lng);
+                }
+            }
+        }
+
+        return std::make_tuple(id, lng_info);
     }
 
     /**
@@ -408,9 +433,10 @@ public:
         auto datatype = get_str_value(it, s_datatype);
         auto property = get_str_value(it, s_property);
 
+        data_value result;
         //We are interesting only for properties with specisfied name if it set
         if(!prop_name.empty() && (property != prop_name)){
-            return std::make_tuple("", "", "", "");
+            return result;
         }
 
         std::string key_value;
@@ -421,17 +447,23 @@ public:
             if(datavalue->value.MemberEnd() != value){
                 if(is_type_wikiid(dtype)){
                     key_value = get_str_value(value, s_id);
-                    return std::make_tuple(property, key_value, dtype, "");
+                    result.push_back(property);
+                    result.push_back(key_value);
+                    result.push_back(dtype);
+                    result.push_back(std::string());
                 }
                 else if(is_type_time(dtype)){
                     key_value = get_str_value(value, s_time);
                     auto dmz = get_number_value<int>(value, s_tmz);
-                    return std::make_tuple(property, key_value, dtype, std::to_string(dmz));
+                    result.push_back(property);
+                    result.push_back(key_value);
+                    result.push_back(dtype);
+                    result.push_back(std::to_string(dmz));
                 }
             }
         }
 
-        return std::make_tuple("", "", "", "");
+        return result;
     }
 
 
@@ -446,9 +478,10 @@ public:
         auto datatype = get_obj_str_value(obj, s_datatype);
         auto property = get_obj_str_value(obj, s_property);
 
+        data_value result;
         //We are interesting only for properties with specisfied name if it set
         if(!prop_name.empty() && (property != prop_name)){
-            return std::make_tuple("", "", "", "");
+            return result;
         }
 
         std::string key_value;
@@ -459,18 +492,22 @@ public:
             if(datavalue->value.MemberEnd() != value){
                 if(is_type_wikiid(dtype)){
                     key_value = get_str_value(value, s_id);
-                    return std::make_tuple(property, key_value, dtype, "");
+                    result.push_back(property);
+                    result.push_back(key_value);
+                    result.push_back(dtype);
+                    result.push_back(std::string());
                 }
                 else if(is_type_time(dtype)){
                     key_value = get_str_value(value, s_time);
                     auto dmz = get_number_value<int>(value, s_tmz);
-                    return std::make_tuple(property, key_value, dtype, std::to_string(dmz));
+                    result.push_back(property);
+                    result.push_back(key_value);
+                    result.push_back(dtype);
+                    result.push_back(std::to_string(dmz));
                 }
             }
         }
-
-        return std::make_tuple("", "", "", "");
-
+        return result;
     }
 
     /**
@@ -510,7 +547,7 @@ public:
         const auto r_count = parse_property<data_value>(it, prop_name, result);
         std::cout << "Property: " << prop_name << " Items:" << r_count << std::endl;
         for(data_value res : result){
-            std::cout << "0:" << std::get<0>(res) << " 1:" << std::get<1>(res) << " 2:" << std::get<2>(res) << " 3:" << std::get<3>(res) << std::endl;
+            print(res);
             /*
             if(_receiver){
                 _receiver->put_dictionary_value(std::get<0>(res), std::get<1>(res), std::pair(std::get<2>(res), std::get<3>(res)));
@@ -519,7 +556,13 @@ public:
         }
     }
 
-
+    void print(const data_value& values) const{
+        int idx=0;
+        for(auto res : values){
+            std::cout << idx++ << ": " << res << ";";
+        }
+        std::cout << std::endl;
+    }
 
     /**
      * @brief
@@ -546,7 +589,7 @@ public:
                 auto itm = parse_item();
                 if( !std::get<0>(itm).empty() ){
                     if(_receiver){
-                        _receiver->put_dictionary_value("Item", std::get<0>(itm), std::pair(std::get<1>(itm),std::get<2>(itm)));
+                        _receiver->put_dictionary_value("Item", std::get<0>(itm), std::get<1>(itm));
                     }
                 }
 

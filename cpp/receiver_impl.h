@@ -99,7 +99,6 @@ public:
             return;
         }
 
-        //std::cout << "Property: " << key << " [ Type: " << std::get<0>(val) << "] Val: " << std::get<1>(val) << std::endl;
         dicts[d_key]->put(key, val);
     }
 

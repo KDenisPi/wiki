@@ -30,10 +30,10 @@ using pID = std::string;
  *
  */
 using pInfo = std::tuple<pID, std::string, std::string>;
-using item_info = std::tuple<std::string, std::string, std::string>;
+using item_info = std::tuple<std::string, std::vector<std::string>>;
 
 using dict_key = std::string;
-using dict_val = std::tuple<std::string, std::string>;
+using dict_val = std::vector<std::string>; //std::tuple<std::string, std::string>;
 
 using prop_ids = std::vector<std::string>;
 

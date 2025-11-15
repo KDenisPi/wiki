@@ -99,9 +99,7 @@ public:
                 }
 
                 outputFile << it->first;
-                for_each(it->second, [&](const auto& val) {
-                    outputFile << ";" << val;
-                });
+                put_value(outputFile, it->second);
                 outputFile << std::endl;
             }
             outputFile.close();
@@ -119,6 +117,8 @@ public:
         return result;
     }
 
+
+    void put_value(std::fstream& outputFile, const V& value);
 
     /**
      * @brief

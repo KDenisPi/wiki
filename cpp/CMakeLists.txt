@@ -19,12 +19,12 @@ include_directories(BEFORE
 
 #aux_source_directory(${PROJECT_SOURCE_DIR} PARS_SOURCES)
 
-add_executable(wpars main.cpp prop_dict.cpp wiki.cpp item_parser.cpp smallthings.cpp)
+add_executable(wpars main.cpp prop_dict.cpp wiki.cpp item_parser.cpp dict_class.cpp smallthings.cpp)
 
 add_executable(test_sread test_sread_parser.cpp smallthings.cpp)
-add_executable(test_props test_props_match.cpp prop_dict.cpp item_parser.cpp)
+add_executable(test_props test_props_match.cpp prop_dict.cpp item_parser.cpp dict_class.cpp)
 add_executable(test_gen test_general.cpp)
-add_executable(test_dict test_dict_class.cpp)
+add_executable(test_dict test_dict_class.cpp dict_class.cpp)
 
 target_link_libraries(wpars ${WPARSER_LIBS})
 

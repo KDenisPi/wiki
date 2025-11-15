@@ -62,12 +62,18 @@ int main (int argc, char* argv[])
                 std::shared_ptr<char> fake_buff;
                 std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverEasy>();
                 std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, ptr_props, receiver);
+
+                std::vector<std::string> lng = {"ru"};
                 if(ptr_item->load(buffer.get())){
                     auto ptr_item_doc = ptr_item->get();
 
-                    auto itm = ptr_item->parse_item();
+                    auto itm = ptr_item->parse_item(lng);
                     if(!std::get<0>(itm).empty()){
-                        std::cout << " Item ID: " << std::get<0>(itm) << " Label: " << std::get<1>(itm) << " Description: " << std::get<2>(itm) << std::endl;
+                        std::cout << " Item ID: " << std::get<0>(itm);
+                        for(auto val : std::get<1>(itm)){
+                            std::cout << ";" << val;
+                        }
+                        std::cout << std::endl;
                     }
 
                     auto v_claims = ptr_item_doc->FindMember("claims");
