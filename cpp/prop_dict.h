@@ -66,10 +66,20 @@ public:
      * @param v_props
      */
     void load_important_property(std::vector<pID> v_props){
-        const std::string p_unk("Unknown");
         prop_important.swap(v_props);
         std::sort(prop_important.begin(), prop_important.end());
     }
+
+    /**
+     * @brief
+     *
+     * @param v_props
+     */
+    void load_instance_of_property(std::vector<pID> v_props){
+        prop_P31.swap(v_props);
+        std::sort(prop_P31.begin(), prop_P31.end());
+    }
+
 
     /**
      * @brief
@@ -80,6 +90,10 @@ public:
      */
     bool is_important_property(const pID& prop_id) const {
         return (std::find(prop_important.begin(), prop_important.end(), prop_id) != prop_important.end());
+    }
+
+    bool is_useful_instance_of_value(const pID& prop_id) const {
+        return (std::find(prop_P31.begin(), prop_P31.end(), prop_id) != prop_P31.end());
     }
 
     /**
@@ -106,6 +120,7 @@ protected:
 
     std::shared_ptr<rapidjson::Document> ptr_prop;
     std::vector<pID> prop_important;
+    std::vector<pID> prop_P31;  //Good values for instance of properties
 };
 
 }//namespace wiki

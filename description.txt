@@ -8,10 +8,11 @@ Process description
 1. Process all items and Select all posiible values for P31 (instance of, type to which this subject corresponds/belongs)
 2. Select interesting us types of instances from the list of all values for P31 ("5.1 List of interesting instances (P31)")
 3. Process all iteam again and select now
-3.1  Get P31 property values (usually many values)for an item. If there is no property value from "5.1 List of interesting instances (P31)" ignore this Item.
+3.1. Get P31 property values (usually many values)for an item. If there is no property value from "5.1 List of interesting instances (P31)" ignore this Item.
 3.2. Detect Item information and save it - storage structure ItemID, Label(en), Description(en)
 3.3. Detect the same information but for another languages (only "ru" for now) - storage structure ItemID, lng, label, description
 3.4. Select all date/time information for properties (see 5.2 List of important properties)
+3.5. Select qulifiers for detected date, usually ItemID. Property used for qualifiers provided in 5.3
 Storage structure - ItemID, PID(property ID), ITIME(time/date string), IADD(time additinal information), QID (qualifiers, usually ItemID)
 
 
@@ -77,4 +78,8 @@ P7124; date of the first one; qualifier: when the first element of a quantity ap
 P7125; date of the latest one; qualifier: when the latest element of a quantity appeared/took place
 P10135; recording date; the date when a recording was made
 P10673; debut date; date when a person or group is considered to have "debuted"
+
+5.3. List of properties used for qualifiers
+"P805" : ["statement is subject of","(qualifying) item that describes the relation identified in this statement"],
+"P4649" : ["identity of subject in context","qualifier for subjects which may have different identities which are covered by different items, the identity to which the qualified statement applies"],
 

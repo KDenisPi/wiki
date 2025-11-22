@@ -193,18 +193,84 @@ public:
      *
      */
     void load_important_properties(){
-/*
-        std::vector<pID> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
-                "P570", "P571", "P577", "P585", "P793", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
-            "P4647", "P9899", "P10673"};
-*/
+        /*
+        P569; date of birth; date on which the subject was born
+        P570; date of death; date on which the subject died
+        P571; inception; time when an entity begins to exist;  for date of official opening use P1619
+        P575; time of discovery or invention; date or point in time when the item was discovered or invented
+        P577; publication date; date or point in time when a work was first published or released
+        P580; start time; time an entity begins to exist or a statement starts being valid
+        P582; end time; moment when an entity ceases to exist and a statement stops being entirely valid or no longer be true
+        P585; point in time; date something took place, existed or a statement was true;  for providing time use the "refine date" property (P4241)
+        P1619; date of official opening; date or point in time a place, organization, or event officially opened
+        P3999; date of official closure; date of official closure of a building or event
+        P6949; announcement date; time of the first public presentation of a subject by the creator, of information by the media
+        P7124; date of the first one; qualifier: when the first element of a quantity appeared/took place
+        P7125; date of the latest one; qualifier: when the latest element of a quantity appeared/took place
+        P10135; recording date; the date when a recording was made
+        P10673; debut date; date when a person or group is considered to have "debuted"
+        */
+
+        std::vector<std::string> v_props = {"P569","P570", "P571", "P575", "P577", "P580", "P582", "P585", "P1619",\
+            "P3999", "P6949", "P7124", "P7125", "P10135", "P10673"};
+
+        props->load_important_property(v_props);
+
         //P31;instance of;
         //type to which this subject corresponds/belongs. Different from P279 (subclass of);
         //for example: K2 is an instance of mountain; volcanoes form a subclass of mountains,
         //and the volcano is a type (instance) of volcanic landform
-        std::vector<pID> v_props = {"P31"};
 
-        props->load_important_property(v_props);
+        /*
+        Q5; human; any single member of Homo sapiens, unique extant species of the genus Homo
+
+        Q13418847; historical event; particular incident in history that brings about a historical change
+        Q1656682; event; temporary and scheduled happening, like a conference, festival, competition or similar
+        Q58687420; cultural event; event of cultural kind
+        Q24336466; mythical event; event that only appears in myths and legends
+        Q30111082; political event; temporary and scheduled happening with political nature, origin, or consequences
+        Q2680861; transient astronomical event; briefly-observed celestial event
+        Q55814; extinction event; widespread and rapid decrease in the amount of life on earth
+        Q2245405; key event; class of items used with property 'significant event' (P793)
+        Q113162275; music event; event where music is performed
+        Q52260246; scientific event; type of event;  occurrence of scientific interest, import, or purpose
+        Q110799181; in-person event; event held in person
+        Q106518893; entity in event;
+        Q463796; impact event; collision of two astronomical objects with measurable effects
+        Q1568205; literary event;
+        Q2136042; arts event;
+        Q117769381; social event; occasion where people assemble a series of events
+        Q109975697; geological event; type of event
+        Q108586636; form of event; metaclass, grouping forms and types of events by specificity
+
+        Q105543609; musical work/composition; Wikidata metaclass;  legal concept of uniquely identifiable piece or work of music, either vocal or instrumental;  NOT applicable to recordings, broadcasts, or individual publications of music in printed or digital form or on physical media
+        Q107487333; type of musical work/composition; Wikidata metaclass
+        Q2188189; musical work; generic term for any work of art related to music, i.e. songs, compositions, groups of compositions, sheet music, melodies, albums, musical films, etc.
+        Q207628; composed musical work; original piece or work of music, either vocal or instrumental
+        Q22965078; Wikidata property for items about musical works; type of Wikidata property
+        Q28146956; Wikidata property to identify musical works; Wikidata property what identify musical works
+
+
+        Q12737077; occupation; label applied to a person based on an activity they participate in
+        Q135106813; musical occupation; main vocalist
+        Q15839299; theatrical occupation; occupation related to the performing arts
+        Q63187345; religious occupation; occupation or profession that serves a purpose within the context of a religion
+        Q66666236; Wikimedia list of persons by occupation; page on a Wikimedia project listing persons by their occupation
+
+        ----
+        Q6256; country; distinct territorial body or political entity
+        Q2418896; part of the world; continent with islands in nearby waters
+        Q5107; continent; large landmass identified by convention
+        */
+
+        std::vector<pID> v_instance_of_values = {
+            "Q5", "Q13418847", "Q1656682", "Q58687420", "Q24336466", "Q30111082", "Q2680861", "Q55814", "Q2245405",
+            "Q113162275", "Q52260246", "Q110799181", "Q106518893", "Q463796", "Q1568205", "Q2136042", "Q117769381",
+            "Q109975697", "Q108586636", "Q105543609", "Q107487333", "Q2188189", "Q207628", "Q22965078", "Q28146956",
+            "Q12737077", "Q135106813", "Q15839299", "Q63187345", "Q66666236", "Q6256", "Q2418896", "Q5107"
+        };
+
+        props->load_instance_of_property(v_instance_of_values);
     }
 
 

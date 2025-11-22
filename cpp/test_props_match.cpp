@@ -38,19 +38,40 @@ int main (int argc, char* argv[])
     }
 
     std::cout << argv[1] << " Props count: " << ptr_props->MemberCount() << std::endl;
-/*
-    std::vector<std::string> v_props = {"P31", "P50", "P101", "P136", "P921", "P425", "P569",\
-            "P570", "P571", "P577", "P585", "P793", "P921", "P1191", "P2093", "P3150", "P3989", "P4647"\
-        "P4647", "P9899", "P10673"};
-*/
-    std::vector<std::string> v_props = {"P569","P570", "P571", "P575", "P577", "P580", "P582", "P585", "P1619",\
+    /*
+    P569; date of birth; date on which the subject was born
+    P570; date of death; date on which the subject died
+    P571; inception; time when an entity begins to exist;  for date of official opening use P1619
+    P575; time of discovery or invention; date or point in time when the item was discovered or invented
+    P577; publication date; date or point in time when a work was first published or released
+    P580; start time; time an entity begins to exist or a statement starts being valid
+    P582; end time; moment when an entity ceases to exist and a statement stops being entirely valid or no longer be true
+    P585; point in time; date something took place, existed or a statement was true;  for providing time use the "refine date" property (P4241)
+    P1619; date of official opening; date or point in time a place, organization, or event officially opened
+    P3999; date of official closure; date of official closure of a building or event
+    P6949; announcement date; time of the first public presentation of a subject by the creator, of information by the media
+    P7124; date of the first one; qualifier: when the first element of a quantity appeared/took place
+    P7125; date of the latest one; qualifier: when the latest element of a quantity appeared/took place
+    P10135; recording date; the date when a recording was made
+    P10673; debut date; date when a person or group is considered to have "debuted"
+    */
+
+    std::vector<wiki::pID> v_props = {"P569","P570", "P571", "P575", "P577", "P580", "P582", "P585", "P1619",\
         "P3999", "P6949", "P7124", "P7125", "P10135", "P10673"};
-
-
     ptr_props->load_important_property(v_props);
 
-    auto p_found = ptr_props->is_important_property("P571");
-    std::cout << " P571 Found: " << p_found << std::endl;
+    std::vector<wiki::pID> v_instance_of_values = {
+        "Q5", "Q13418847", "Q1656682", "Q58687420", "Q24336466", "Q30111082", "Q2680861", "Q55814", "Q2245405",
+        "Q113162275", "Q52260246", "Q110799181", "Q106518893", "Q463796", "Q1568205", "Q2136042", "Q117769381",
+        "Q109975697", "Q108586636", "Q105543609", "Q107487333", "Q2188189", "Q207628", "Q22965078", "Q28146956",
+        "Q12737077", "Q135106813", "Q15839299", "Q63187345", "Q66666236", "Q6256", "Q2418896", "Q5107"
+    };
+
+    ptr_props->load_instance_of_property(v_instance_of_values);
+
+
+    //auto p_found = ptr_props->is_important_property("P571");
+    //std::cout << " P571 Found: " << p_found << std::endl;
 
     std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
     if(ptr_reader->init(std::string(argv[2]))){
@@ -62,14 +83,15 @@ int main (int argc, char* argv[])
                 std::shared_ptr<char> fake_buff;
                 std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverEasy>();
                 std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, ptr_props, receiver);
-
                 std::vector<std::string> lng = {"ru"};
+
                 if(ptr_item->load(buffer.get())){
                     auto ptr_item_doc = ptr_item->get();
 
+                    bool interesting_item = false;
                     auto itm = ptr_item->parse_item(lng);
                     if(!std::get<0>(itm).empty()){
-                        std::cout << " Item ID: " << std::get<0>(itm);
+                        std::cout << "Item ID: " << std::get<0>(itm);
                         for(auto val : std::get<1>(itm)){
                             std::cout << ";" << val;
                         }
@@ -78,8 +100,7 @@ int main (int argc, char* argv[])
 
                     auto v_claims = ptr_item_doc->FindMember("claims");
                     if(v_claims != ptr_item_doc->MemberEnd()){
-                        std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: "
-                            << v_claims->value.MemberCount() << std::endl;
+                        //std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: " << v_claims->value.MemberCount() << std::endl;
 
                         //Detect "Instance of" property for this Item
                         auto p31 = v_claims->value.FindMember(ptr_item->s_P31.c_str());
@@ -89,13 +110,23 @@ int main (int argc, char* argv[])
                             std::cout << "P31 Instance of:";
                             for(auto p31_inst : pids){
                                 std::cout << " " << p31_inst;
+                                if(ptr_props->is_useful_instance_of_value(p31_inst)){
+                                    std::cout << "[Y]";
+                                    interesting_item = true;
+                                }
+                            }
+                            if(!interesting_item){
+                                std::cout << " --- Not interesting. Ignore" << std::endl;
                             }
                             std::cout << std::endl;
                         }
 
-                        auto ptr_props_doc = ptr_props->get();
-                        for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
-                            ptr_item->parse_claim(cl_v);
+                        if(interesting_item){
+                            auto ptr_props_doc = ptr_props->get();
+                            for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
+                                ptr_item->parse_claim(cl_v);
+                            }
+                            std::cout << std::endl;
                         }
                     }
                     else

@@ -251,8 +251,8 @@ public:
                             const auto qual_first = qual_arry->value[0].GetObject();
                             auto res = pasrse_obj_data_value(qual_first);
                             if(!res.empty()){
-                                std::cout << "Q P: " << q_val << " Val: ";
-                                print(res);
+                                //std::cout << "Q P: " << q_val << " Val: ";
+                                //print(res);
                                 return res;
                             }
                         }
@@ -288,6 +288,7 @@ public:
                         if( is_type_time(get(res,2)) ){
                             const auto q_val = parse_qualifiers(data_obj);
                             if( !get(q_val,1).empty() ){
+                                res.push_back(get(q_val,0));
                                 res.push_back(get(q_val,1));
                             }
                         }
@@ -545,7 +546,7 @@ public:
 
         std::vector<data_value> result;
         const auto r_count = parse_property<data_value>(it, prop_name, result);
-        std::cout << "Property: " << prop_name << " Items:" << r_count << std::endl;
+        //std::cout << "Property: " << prop_name << " Items:" << r_count << std::endl;
         for(data_value res : result){
             print(res);
             /*
@@ -559,7 +560,7 @@ public:
     void print(const data_value& values) const{
         int idx=0;
         for(auto res : values){
-            std::cout << idx++ << ": " << res << ";";
+            std::cout << idx++ << ": " << res << "; ";
         }
         std::cout << std::endl;
     }
