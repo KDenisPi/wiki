@@ -28,7 +28,8 @@ public:
      *
      */
     ReceiverImpl() {
-        std::vector<std::string> vals = {"P31", "Item"};
+        std::vector<std::string> vals = {"DataEvents", "ItemsExt"};
+        //std::vector<std::string> vals = {"P31", "Item"};
         load_dict_list(vals);
 
         for_each(vals.begin(), vals.end(), [this](std::string& prop){

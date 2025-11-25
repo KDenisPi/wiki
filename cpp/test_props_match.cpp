@@ -64,7 +64,7 @@ int main (int argc, char* argv[])
         "Q5", "Q13418847", "Q1656682", "Q58687420", "Q24336466", "Q30111082", "Q2680861", "Q55814", "Q2245405",
         "Q113162275", "Q52260246", "Q110799181", "Q106518893", "Q463796", "Q1568205", "Q2136042", "Q117769381",
         "Q109975697", "Q108586636", "Q105543609", "Q107487333", "Q2188189", "Q207628", "Q22965078", "Q28146956",
-        "Q12737077", "Q135106813", "Q15839299", "Q63187345", "Q66666236", "Q6256", "Q2418896", "Q5107"
+        "Q12737077", "Q135106813", "Q15839299", "Q63187345", "Q66666236", "Q6256", "Q5107", "Q93288", "Q11514315", "Q103495"
     };
 
     ptr_props->load_instance_of_property(v_instance_of_values);
@@ -88,10 +88,12 @@ int main (int argc, char* argv[])
                 if(ptr_item->load(buffer.get())){
                     auto ptr_item_doc = ptr_item->get();
 
-                    bool interesting_item = false;
+                    int interesting_item = 0;
                     auto itm = ptr_item->parse_item(lng);
-                    if(!std::get<0>(itm).empty()){
-                        std::cout << "Item ID: " << std::get<0>(itm);
+
+                    const auto item_id = std::get<0>(itm);
+                    if(!item_id.empty()){
+                        std::cout << "Item ID: " << item_id;
                         for(auto val : std::get<1>(itm)){
                             std::cout << ";" << val;
                         }
@@ -112,22 +114,26 @@ int main (int argc, char* argv[])
                                 std::cout << " " << p31_inst;
                                 if(ptr_props->is_useful_instance_of_value(p31_inst)){
                                     std::cout << "[Y]";
-                                    interesting_item = true;
+                                    interesting_item++;
                                 }
                             }
-                            if(!interesting_item){
-                                std::cout << " --- Not interesting. Ignore" << std::endl;
+                            if( interesting_item==0 ){
+                                std::cout << " --- Not interesting. Ignore";
+                            }
+                            if( interesting_item>1 ){
+                                std::cout << " --- More than one P31";
                             }
                             std::cout << std::endl;
                         }
 
-                        if(interesting_item){
+                        if( interesting_item>0 ){
                             auto ptr_props_doc = ptr_props->get();
                             for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
-                                ptr_item->parse_claim(cl_v);
+                                ptr_item->parse_claim(cl_v, item_id);
                             }
                             std::cout << std::endl;
                         }
+                            
                     }
                     else
                         std::cout << "No such member: " << "claims" << std::endl;

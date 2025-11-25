@@ -538,7 +538,7 @@ public:
      *
      * @param it
      */
-    void parse_claim(const rapidjson::Value::ConstMemberIterator& it){
+    void parse_claim(const rapidjson::Value::ConstMemberIterator& it, const pID& item_id){
         const auto prop_name = std::string(it->name.GetString());
         if(!_props->is_important_property(prop_name)){
             return;
@@ -549,11 +549,9 @@ public:
         //std::cout << "Property: " << prop_name << " Items:" << r_count << std::endl;
         for(data_value res : result){
             print(res);
-            /*
             if(_receiver){
-                _receiver->put_dictionary_value(std::get<0>(res), std::get<1>(res), std::pair(std::get<2>(res), std::get<3>(res)));
+                //_receiver->put_dictionary_value("ItemsExt", );
             }
-            */
         }
     }
 
@@ -588,9 +586,10 @@ public:
             if(res){
                 //Process item information
                 auto itm = parse_item();
-                if( !std::get<0>(itm).empty() ){
+                const auto item_id = std::get<0>(itm);
+                if( !item_id.empty() ){
                     if(_receiver){
-                        _receiver->put_dictionary_value("Item", std::get<0>(itm), std::get<1>(itm));
+                        _receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
                     }
                 }
 
@@ -604,7 +603,7 @@ public:
                         auto insts = get_instance_of(p31, pids);
 
                         for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
-                            parse_claim(claim);
+                            parse_claim(claim, item_id);
                         }
                     }
 

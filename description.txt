@@ -56,8 +56,15 @@ Q66666236; Wikimedia list of persons by occupation; page on a Wikimedia project 
 
 ----
 Q6256; country; distinct territorial body or political entity
-Q2418896; part of the world; continent with islands in nearby waters
-Q5107; continent; large landmass identified by convention
+
+[Del,24.11.2025]Q2418896; part of the world; continent with islands in nearby waters
+[]Q5107; continent; large landmass identified by convention
+
+
+---+++++ -----
+[Add,24.11.2025]Q93288;contract;agreement having a lawful object entered into voluntarily by multiple parties (may be explicitly written or oral)
+[Add,24.11.2025]Q11514315;historical period;segment of time in history
+[Add,24.11.2025]Q103495;world war;large-scaled international military conflict
 
 
 5.2 List of important properties. 
