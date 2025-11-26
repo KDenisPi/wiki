@@ -21,6 +21,7 @@
 #include "item_reader.h"
 #include "item_parser.h"
 #include "receiver_easy.h"
+#include "receiver_impl.h"
 
 int main (int argc, char* argv[])
 {
@@ -75,13 +76,13 @@ int main (int argc, char* argv[])
 
     std::unique_ptr<wiki::ItemReader> ptr_reader = std::make_unique<wiki::ItemReader>();
     if(ptr_reader->init(std::string(argv[2]))){
+        std::atomic_int sync;
+        std::shared_ptr<char> fake_buff;
+        std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverImpl>();
 
         auto r_res = ptr_reader->next(buffer.get(), MAX_LINE_LENGTH);
         while(r_res != wiki::ItemReader::END_OF_FILE){
             if(wiki::ItemReader::Res::OK == r_res){
-                std::atomic_int sync;
-                std::shared_ptr<char> fake_buff;
-                std::shared_ptr<wiki::Receiver> receiver = std::make_shared<wiki::ReceiverEasy>();
                 std::unique_ptr<wiki::ItemParser> ptr_item = std::make_unique<wiki::ItemParser>(0, &sync, fake_buff, ptr_props, receiver);
                 std::vector<std::string> lng = {"ru"};
 
@@ -89,7 +90,7 @@ int main (int argc, char* argv[])
                     auto ptr_item_doc = ptr_item->get();
 
                     int interesting_item = 0;
-                    auto itm = ptr_item->parse_item(lng);
+                    const auto itm = ptr_item->parse_item(lng);
 
                     const auto item_id = std::get<0>(itm);
                     if(!item_id.empty()){
@@ -102,38 +103,43 @@ int main (int argc, char* argv[])
 
                     auto v_claims = ptr_item_doc->FindMember("claims");
                     if(v_claims != ptr_item_doc->MemberEnd()){
-                        //std::cout << "Name: " << v_claims->name.GetString() << " Type: " << v_claims->value.GetType() << " Count: " << v_claims->value.MemberCount() << std::endl;
-
                         //Detect "Instance of" property for this Item
                         auto p31 = v_claims->value.FindMember(ptr_item->s_P31.c_str());
                         if( v_claims->value.MemberEnd() != p31){
                             wiki::prop_ids pids;
                             auto insts = ptr_item->get_instance_of(p31, pids);
-                            std::cout << "P31 Instance of:";
                             for(auto p31_inst : pids){
-                                std::cout << " " << p31_inst;
                                 if(ptr_props->is_useful_instance_of_value(p31_inst)){
-                                    std::cout << "[Y]";
-                                    interesting_item++;
+
+                                    receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
+
+                                    auto ptr_props_doc = ptr_props->get();
+                                    for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
+                                        ptr_item->parse_claim(cl_v, item_id, p31_inst);
+                                    }
+                                    break;
                                 }
                             }
-                            if( interesting_item==0 ){
-                                std::cout << " --- Not interesting. Ignore";
-                            }
-                            if( interesting_item>1 ){
-                                std::cout << " --- More than one P31";
-                            }
-                            std::cout << std::endl;
-                        }
 
-                        if( interesting_item>0 ){
-                            auto ptr_props_doc = ptr_props->get();
-                            for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
-                                ptr_item->parse_claim(cl_v, item_id);
+                            // Debug output
+                            if( false ){
+                                std::cout << "P31 Instance of:";
+                                for(auto p31_inst : pids){
+                                    std::cout << " " << p31_inst;
+                                    if(ptr_props->is_useful_instance_of_value(p31_inst)){
+                                        std::cout << "[Y]";
+                                        interesting_item++;
+                                    }
+                                }
+                                if( interesting_item==0 ){
+                                    std::cout << " --- Not interesting. Ignore";
+                                }
+                                if( interesting_item>1 ){
+                                    std::cout << " --- More than one P31";
+                                }
+                                std::cout << std::endl;
                             }
-                            std::cout << std::endl;
                         }
-                            
                     }
                     else
                         std::cout << "No such member: " << "claims" << std::endl;
@@ -145,6 +151,7 @@ int main (int argc, char* argv[])
             r_res = ptr_reader->next(buffer.get(), MAX_LINE_LENGTH);
         }
 
+        receiver->save();
     }
     else{
         std::cout << "Could not init reader for: " << std::string(argv[2]) << std::endl;

@@ -37,7 +37,7 @@ public:
         });
 
         //we do not want to load Items dictionary because we do not expect duplicate values
-        dicts["Item"]->set_load_at_start(false);
+        dicts["ItemsExt"]->set_load_at_start(false);
     }
 
     /**

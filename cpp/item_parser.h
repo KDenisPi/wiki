@@ -538,7 +538,8 @@ public:
      *
      * @param it
      */
-    void parse_claim(const rapidjson::Value::ConstMemberIterator& it, const pID& item_id){
+    void parse_claim(const rapidjson::Value::ConstMemberIterator& it, const pID& item_id, const pID& p31_ID){
+
         const auto prop_name = std::string(it->name.GetString());
         if(!_props->is_important_property(prop_name)){
             return;
@@ -548,9 +549,13 @@ public:
         const auto r_count = parse_property<data_value>(it, prop_name, result);
         //std::cout << "Property: " << prop_name << " Items:" << r_count << std::endl;
         for(data_value res : result){
+            res.push_back(item_id); //Add Item ID
+            res.push_back(p31_ID); //Add "Instance of" property value
+            const auto id = item_id + "_" + res[0] + "_" + res[1];
+
             print(res);
             if(_receiver){
-                //_receiver->put_dictionary_value("ItemsExt", );
+                _receiver->put_dictionary_value("DataEvents", id, res);
             }
         }
     }
@@ -601,9 +606,13 @@ public:
                     if( claims->value.MemberEnd() != p31){
                         prop_ids pids;
                         auto insts = get_instance_of(p31, pids);
-
-                        for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
-                            parse_claim(claim, item_id);
+                        for(auto p31_inst : pids){
+                            if(_props->is_useful_instance_of_value(p31_inst)){
+                                for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
+                                    parse_claim(claim, item_id, p31_inst);
+                                }
+                                break;
+                            }
                         }
                     }
 

@@ -127,7 +127,7 @@ public:
      * @param val
      */
     void put(const K& key, const V& val){
-        assert((std::string(typeid(val).name()).find("tuple") != std::string::npos));
+        //assert((std::string(typeid(val).name()).find("tuple") != std::string::npos));
 
         const std::lock_guard<std::mutex> lock(mtx);
 
