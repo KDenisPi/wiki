@@ -24,7 +24,7 @@ int main (int argc, char* argv[])
     std::cout << piutils::get_time_string(false) << " started" << std::endl;
 
     if(argc < 2){
-        std::cout << "Missing parameters." << "wpars data.json" << std::endl;
+        std::cout << "Missing parameters." << "wpars data.json [properties.json position_file] " << std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -32,6 +32,8 @@ int main (int argc, char* argv[])
 
     wk.set_bulk_size(5000000); //5M * MAX_PARSING_THREADS = 30M
     wk.set_flush_bulk(100000); //100K * MAX_PARSING_THREADS = 600K
+
+    wk.set_save_pos_every(10);
 
     if(argc >= 3){
         wk.load_properties(argv[2]);

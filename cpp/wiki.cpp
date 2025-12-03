@@ -59,6 +59,9 @@ void WiKi::worker(){
                 break;
             }
 
+            if( save_pos_every > 0 && ((counter/max_threads) % get_save_pos_every()) == 0 ){
+                save_position_info(counter);
+            }
             /*
             if(((counter/max_threads) % 1000) == 0){
                 std::cout << "Items processed: " << std::to_string(counter) << " " << std::to_string(counter/max_threads) << " " << get_flush_bulk() <<  std::endl;
@@ -76,6 +79,8 @@ void WiKi::worker(){
                 break;
             }
         }
+
+        save_position_info(counter);
 
         //save current position in source file
         save_position_file();

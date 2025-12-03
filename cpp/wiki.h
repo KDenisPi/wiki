@@ -49,7 +49,12 @@ public:
      * @brief Destroy the WiKi object
      *
      */
-    virtual ~WiKi() {}
+    virtual ~WiKi() {
+
+        if(position_info_stream.is_open()){
+            position_info_stream.close();
+        }
+    }
 
     /**
      * @brief Max number of parser threads
@@ -262,7 +267,7 @@ public:
         Q5107; continent; large landmass identified by convention
 
         --- updates -------
-        [add 24.11.2025]Q93288;contract;agreement having a lawful object entered into voluntarily by multiple parties (may be explicitly written or oral)        
+        [add 24.11.2025]Q93288;contract;agreement having a lawful object entered into voluntarily by multiple parties (may be explicitly written or oral)
         [Add,24.11.2025]Q11514315;historical period;segment of time in history
         [Add,24.11.2025]Q103495;world war;large-scaled international military conflict
         */
@@ -284,7 +289,25 @@ public:
      * @param filename
      */
     void load_position_file(const std::string& filename){
+        if(filename.empty())
+            return;
+
         position_file = filename;
+
+        if(!position_file.empty()){
+            //Open position info file for appending and move position to the end
+            position_info_file = filename + ".info";
+            std::cout << "Position info file: " << position_info_file << std::endl;
+
+            position_info_stream.open(position_info_file, std::ios::out | std::ios::app);
+            if(position_info_stream.is_open()){
+                position_info_stream.seekg(0, std::fstream::end);
+            }
+            else{
+                std::cerr << "Could not open position info file for appending: " << position_info_file << std::endl;
+            }
+        }
+
         std::ifstream inputFile(filename);
         if(inputFile.is_open()){
             std::string line;
@@ -336,6 +359,24 @@ public:
         bulk_size = bl_size;
     }
 
+    /**
+     * @brief Get the save pos every object
+     *
+     * @return const long
+     */
+    inline const long get_save_pos_every() const {
+        return save_pos_every;
+    }
+
+    /**
+     * @brief Set the save position every object
+     *
+     * @param sp_every
+     */
+    void set_save_pos_every(const long sp_every){
+        save_pos_every = sp_every;
+    }
+
 private:
     std::mutex cv_m;
     std::thread th_main;
@@ -350,12 +391,16 @@ private:
 
     ItemReader reader;
     std::string position_file;
+    std::string position_info_file;
 
     long flush_bulk = 10000;
     unsigned long bulk_size = 0;
 
+    long save_pos_every = 100000;  //Save position in file for every N items processed (100K*Threads)
+    std::fstream position_info_stream;
+
     /**
-     * @brief
+     * @brief Save the current position to the position file
      *
      */
     void save_position_file(){
@@ -364,6 +409,18 @@ private:
             auto pos = reader.get_pos();
             outputFile << std::to_string(pos) << std::endl;
             outputFile.close();
+        }
+    }
+
+    /**
+     * @brief Append the current position info to the position info file
+     *
+     * @param item_index
+     */
+    void save_position_info(const long item_index){
+        if(position_info_stream.is_open()){
+            auto pos = reader.get_pos();
+            position_info_stream << std::to_string(item_index) << "," << std::to_string(pos) << std::endl;
         }
     }
 
