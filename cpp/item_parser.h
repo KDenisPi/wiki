@@ -23,6 +23,7 @@
 #include "rapidjson/document.h"
 
 #include "defines.h"
+#include "gconfig.h"
 #include "prop_dict.h"
 #include "receiver.h"
 
@@ -40,7 +41,7 @@ using doc_ptr = std::shared_ptr<rapidjson::Document>;
 using data_value = std::vector<std::string>; //std::tuple<std::string, std::string, std::string, std::string>;
 
 
-class ItemParser{
+class ItemParser : public GConfig {
 public:
     /**
      * @brief Construct a new Item Parser object
@@ -518,7 +519,9 @@ public:
      * @param label
      */
     void print_type(const rapidjson::Value& value, const std::string& label = ""){
-        std::cout << label << " Object: " << value.IsObject() << " Array: " << value.IsArray() << " String: " << value.IsString() << std::endl;
+        if(is_debug_print()){
+            std::cout << label << " IsObject: " << value.IsObject() << " IsArray: " << value.IsArray() << " IsString: " << value.IsString() << std::endl;
+        }
     }
 
     /**
@@ -560,7 +563,15 @@ public:
         }
     }
 
+    /**
+     * @brief
+     *
+     * @param values
+     */
     void print(const data_value& values) const{
+        if(!is_debug_print())
+            return;
+
         int idx=0;
         for(auto res : values){
             std::cout << idx++ << ": " << res << "; ";
@@ -573,8 +584,6 @@ public:
      *
      */
     void worker(){
-        //std::cout << "Parse started. Index: " << this->_index << std::endl;
-
         auto fn_no_data = [&]() {
             return (0 == _sync->load());
         };

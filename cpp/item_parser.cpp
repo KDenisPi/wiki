@@ -21,7 +21,7 @@ const data_value ItemParser::pack<data_value>(const data_value& data){
 
 template <>
 const std::string ItemParser::pack<std::string>(const data_value& data){
-    return (data.size()>1 ? data[1] : std::string()); //::get<1>(data);
+    return (data.size()>1 ? data[1] : std::string());
 }
 
 }

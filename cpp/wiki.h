@@ -20,6 +20,7 @@
 #include <algorithm>
 
 #include "defines.h"
+#include "gconfig.h"
 #include "item_reader.h"
 #include "item_parser.h"
 #include "prop_dict.h"
@@ -27,7 +28,7 @@
 
 namespace wiki {
 
-class WiKi{
+class WiKi : public GConfig {
 public:
     /**
      * @brief Construct a new WiKi object
