@@ -31,7 +31,7 @@ public:
      *
      */
     ReceiverImpl() {
-        std::vector<std::string> vals = {"DataEvents", "ItemsExt"};
+        std::vector<std::string> vals = {"DataEvents", "ItemsExt", "ItemsExtNotUsed"};
         //std::vector<std::string> vals = {"P31", "Item"};
         load_dict_list(vals);
 

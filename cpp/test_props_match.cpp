@@ -89,11 +89,64 @@ int main (int argc, char* argv[])
                 if(ptr_item->load(buffer.get())){
                     auto ptr_item_doc = ptr_item->get();
 
-                    int interesting_item = 0;
                     const auto itm = ptr_item->parse_item(lng);
-
                     const auto item_id = std::get<0>(itm);
                     if(!item_id.empty()){
+                        int dates_for_item = 0;
+                        auto v_claims = ptr_item_doc->FindMember("claims");
+                        if(v_claims != ptr_item_doc->MemberEnd()){
+                            //Detect "Instance of" property for this Item
+                            auto p31 = v_claims->value.FindMember(ptr_item->s_P31.c_str());
+                            if( v_claims->value.MemberEnd() != p31){
+                                wiki::prop_ids pids;
+                                int dates_for_item = 0;
+                                auto insts = ptr_item->get_instance_of(p31, pids);
+                                for(auto p31_inst : pids){
+                                    if(ptr_props->is_useful_instance_of_value(p31_inst)){
+
+                                        receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
+
+                                        auto ptr_props_doc = ptr_props->get();
+                                        for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
+                                            dates_for_item += ptr_item->parse_claim(cl_v, item_id, p31_inst);
+                                        }
+                                        break;
+                                    }
+                                }
+
+                                if(dates_for_item > 0){
+                                        receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
+                                }
+                                else{
+                                    receiver->put_dictionary_value("ItemsExtNotUsed", item_id, std::get<1>(itm));
+                                }
+
+                                // Debug output
+                                if( false ){
+                                    int interesting_item = 0;
+                                    std::cout << "P31 Instance of:";
+                                    for(auto p31_inst : pids){
+                                        std::cout << " " << p31_inst;
+                                        if(ptr_props->is_useful_instance_of_value(p31_inst)){
+                                            std::cout << "[Y]";
+                                            interesting_item++;
+                                        }
+                                    }
+                                    if( interesting_item==0 ){
+                                        std::cout << " --- Not interesting. Ignore";
+                                    }
+                                    if( interesting_item>1 ){
+                                        std::cout << " --- More than one P31";
+                                    }
+                                    std::cout << std::endl;
+                                }
+                            }
+                        }
+                        else
+                            std::cout << "No such member: " << "claims" << std::endl;
+
+
+
                         std::cout << "Item ID: " << item_id;
                         for(auto val : std::get<1>(itm)){
                             std::cout << ";" << val;
@@ -101,48 +154,6 @@ int main (int argc, char* argv[])
                         std::cout << std::endl;
                     }
 
-                    auto v_claims = ptr_item_doc->FindMember("claims");
-                    if(v_claims != ptr_item_doc->MemberEnd()){
-                        //Detect "Instance of" property for this Item
-                        auto p31 = v_claims->value.FindMember(ptr_item->s_P31.c_str());
-                        if( v_claims->value.MemberEnd() != p31){
-                            wiki::prop_ids pids;
-                            auto insts = ptr_item->get_instance_of(p31, pids);
-                            for(auto p31_inst : pids){
-                                if(ptr_props->is_useful_instance_of_value(p31_inst)){
-
-                                    receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
-
-                                    auto ptr_props_doc = ptr_props->get();
-                                    for(auto cl_v = v_claims->value.MemberBegin(); cl_v != v_claims->value.MemberEnd(); ++cl_v){
-                                        ptr_item->parse_claim(cl_v, item_id, p31_inst);
-                                    }
-                                    break;
-                                }
-                            }
-
-                            // Debug output
-                            if( false ){
-                                std::cout << "P31 Instance of:";
-                                for(auto p31_inst : pids){
-                                    std::cout << " " << p31_inst;
-                                    if(ptr_props->is_useful_instance_of_value(p31_inst)){
-                                        std::cout << "[Y]";
-                                        interesting_item++;
-                                    }
-                                }
-                                if( interesting_item==0 ){
-                                    std::cout << " --- Not interesting. Ignore";
-                                }
-                                if( interesting_item>1 ){
-                                    std::cout << " --- More than one P31";
-                                }
-                                std::cout << std::endl;
-                            }
-                        }
-                    }
-                    else
-                        std::cout << "No such member: " << "claims" << std::endl;
                 }
                 else{
                     std::cout << "No such parse buffer: " << std::endl;

@@ -549,13 +549,13 @@ public:
      *
      * @param it
      */
-    void parse_claim(const rapidjson::Value::ConstMemberIterator& it, const pID& item_id, const pID& p31_ID){
+    int parse_claim(const rapidjson::Value::ConstMemberIterator& it, const pID& item_id, const pID& p31_ID){
 
         const auto prop_name = std::string(it->name.GetString());
         if(!_props->is_important_property(prop_name)){
             //std::cout << "Skip property: " << prop_name << std::endl;
             //std::cout << prop_name << ";\\|";
-            return;
+            return 0;
         }
 
         std::vector<data_value> result;
@@ -573,6 +573,7 @@ public:
                 _receiver->put_dictionary_value("DataEvents", id, res);
             }
         }
+        return result.size();
     }
 
     /**
@@ -628,30 +629,37 @@ public:
                 auto itm = parse_item(get_languages());
                 const auto item_id = std::get<0>(itm);
                 if( !item_id.empty() ){
-                    if(_receiver){
-                        _receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
-                    }
-                }
-
-                //Process item claims, one by one
-                auto claims = get()->FindMember(s_claims.c_str());
-                if( get()->MemberEnd() != claims ){
-                    //Detect "Instance of" property for this Item
-                    auto p31 = claims->value.FindMember(s_P31.c_str());
-                    if( claims->value.MemberEnd() != p31){
-                        prop_ids pids;
-                        auto insts = get_instance_of(p31, pids);
-                        for(auto p31_inst : pids){
-                            if(_props->is_useful_instance_of_value(p31_inst)){
-                                for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
-                                    parse_claim(claim, item_id, p31_inst);
+                    int dates_for_item = 0;
+                    //Process item claims, one by one
+                    auto claims = get()->FindMember(s_claims.c_str());
+                    if( get()->MemberEnd() != claims ){
+                        //Detect "Instance of" property for this Item
+                        auto p31 = claims->value.FindMember(s_P31.c_str());
+                        if( claims->value.MemberEnd() != p31){
+                            prop_ids pids;
+                            auto insts = get_instance_of(p31, pids);
+                            for(auto p31_inst : pids){
+                                if(_props->is_useful_instance_of_value(p31_inst)){
+                                    for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
+                                        dates_for_item += parse_claim(claim, item_id, p31_inst);
+                                    }
+                                    break;
                                 }
-                                break;
                             }
                         }
+
                     }
 
+                    if(_receiver){
+                        if(dates_for_item > 0){
+                            _receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
+                        }
+                        else{
+                            _receiver->put_dictionary_value("ItemsExtNotUsed", item_id, std::get<1>(itm));
+                        }
+                    }
                 }
+
             }
 
             _sync->store(0);
