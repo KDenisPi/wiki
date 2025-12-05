@@ -36,7 +36,7 @@ public:
      * @return true
      * @return false
      */
-    const bool is_dictionary(const std::string dict) const{
+    const bool is_dictionary(const std::string& dict) const{
         for( auto it = dict_list.begin(); it != dict_list.end(); ++it ){
             if( *it == dict )
                 return true;

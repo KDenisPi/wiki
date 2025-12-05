@@ -26,7 +26,7 @@ namespace wiki{
 template<typename K, typename V>
 class DictClass{
 public:
-    DictClass(const std::string& name) : dict_name(name) {
+    DictClass(const std::string& name, const bool loadAtStart = false) : dict_name(name), load_at_start(loadAtStart) {
         dict_filename = name + ".csv";
     }
 

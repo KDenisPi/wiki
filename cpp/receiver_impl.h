@@ -20,6 +20,9 @@
 
 namespace wiki {
 
+using dict_class = DictClass<dict_key, dict_val>;
+using dict_type = std::pair<pID, std::shared_ptr<dict_class>>;
+
 class ReceiverImpl : public Receiver {
 public:
 
@@ -37,7 +40,8 @@ public:
         });
 
         //we do not want to load Items dictionary because we do not expect duplicate values
-        dicts["ItemsExt"]->set_load_at_start(false);
+        //Update: We disable "load at start" by default
+        //dicts["ItemsExt"]->set_load_at_start(false);
     }
 
     /**
@@ -54,7 +58,7 @@ public:
      * @return false
      */
     virtual bool save() override {
-        std::for_each(dicts.begin(), dicts.end(), [](const std::pair<pID, std::shared_ptr<DictClass<dict_key, dict_val>>>& dict) {
+        std::for_each(dicts.begin(), dicts.end(), [](const dict_type& dict) {
                 if(dict.second.get()){
                     dict.second->save();
                 }
@@ -64,7 +68,7 @@ public:
     }
 
     virtual void flush() override {
-        std::for_each(dicts.begin(), dicts.end(), [](const std::pair<pID, std::shared_ptr<DictClass<dict_key, dict_val>>>& dict) {
+        std::for_each(dicts.begin(), dicts.end(), [](const dict_type& dict) {
                 if(dict.second.get()){
                     dict.second->save(true);
                 }
@@ -78,7 +82,7 @@ public:
      * @return false
      */
     virtual bool load() override {
-        std::for_each(dicts.begin(), dicts.end(), [](const std::pair<pID, std::shared_ptr<DictClass<dict_key, dict_val>>>& dict) {
+        std::for_each(dicts.begin(), dicts.end(), [](const dict_type& dict) {
                 if(dict.second.get()){
                     if(dict.second->get_load_at_start()){
                         dict.second->load();
@@ -104,7 +108,7 @@ public:
     }
 
 private:
-    std::map<pID, std::shared_ptr<DictClass<dict_key, dict_val>>> dicts;
+    std::map<pID, std::shared_ptr<dict_class>> dicts;
 };
 
 }
