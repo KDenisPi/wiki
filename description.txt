@@ -74,6 +74,8 @@ P569; date of birth; date on which the subject was born
 P570; date of death; date on which the subject died
 P571; inception; time when an entity begins to exist;  for date of official opening use P1619
 P575; time of discovery or invention; date or point in time when the item was discovered or invented
+[Add,04.12.2025]P576;dissolved, abolished or demolished date;point in time at which the subject (organisation, building) ceased to exist; see "date of official closure" (P3999) for closing a facility, "service retirement" (P730) for retiring equipment, "discontinued date" (P2669) for stopping a product
+P2669;discontinued date;date that the availability of a product or service was discontinued; see also "dissolved, abolished or demolished" (P576) and "service retirement" (P730) for pieces or classes of equipment
 P577; publication date; date or point in time when a work was first published or released
 P580; start time; time an entity begins to exist or a statement starts being valid
 P582; end time; moment when an entity ceases to exist and a statement stops being entirely valid or no longer be true

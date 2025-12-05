@@ -150,6 +150,8 @@ public:
 
     const std::string s_P31 = "P31"; //"Instance of" property
 
+    const std::string empty_val = "0";
+
     /**
      * @brief
      *
@@ -291,6 +293,10 @@ public:
                             if( !get(q_val,1).empty() ){
                                 res.push_back(get(q_val,0));
                                 res.push_back(get(q_val,1));
+                            }
+                            else{
+                                res.push_back(empty_val);
+                                res.push_back(empty_val);
                             }
                         }
 
@@ -545,12 +551,16 @@ public:
 
         const auto prop_name = std::string(it->name.GetString());
         if(!_props->is_important_property(prop_name)){
+            //std::cout << "Skip property: " << prop_name << std::endl;
+            //std::cout << prop_name << ";\\|";
             return;
         }
 
         std::vector<data_value> result;
         const auto r_count = parse_property<data_value>(it, prop_name, result);
         //std::cout << "Property: " << prop_name << " Items:" << r_count << std::endl;
+        //print(result[0]);
+
         for(data_value res : result){
             res.push_back(item_id); //Add Item ID
             res.push_back(p31_ID); //Add "Instance of" property value
@@ -582,6 +592,20 @@ public:
     /**
      * @brief
      *
+     * @param v_values
+     */
+    void print(const std::vector<data_value>& v_values) const{
+        if(!is_debug_print())
+            return;
+
+        for(auto values : v_values){
+            print(values);
+        }
+    }
+
+    /**
+     * @brief
+     *
      */
     void worker(){
         auto fn_no_data = [&]() {
@@ -599,7 +623,7 @@ public:
             auto res = load(_buffer.get());
             if(res){
                 //Process item information
-                auto itm = parse_item();
+                auto itm = parse_item(get_languages());
                 const auto item_id = std::get<0>(itm);
                 if( !item_id.empty() ){
                     if(_receiver){

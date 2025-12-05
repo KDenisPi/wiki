@@ -215,9 +215,13 @@ public:
         P7125; date of the latest one; qualifier: when the latest element of a quantity appeared/took place
         P10135; recording date; the date when a recording was made
         P10673; debut date; date when a person or group is considered to have "debuted"
+
+        [Add,04.12.2025]P576; dissolved, abolished or demolished date;point in time at which the subject (organisation, building) ceased to exist; see "date of official closure" (P3999) for closing a facility, "service retirement" (P730) for retiring equipment, "discontinued date" (P2669) for stopping a product
+        P2669;discontinued date;date that the availability of a product or service was discontinued; see also "dissolved, abolished or demolished" (P576) and "service retirement" (P730) for pieces or classes of equipment
+
         */
 
-        std::vector<std::string> v_props = {"P569","P570", "P571", "P575", "P577", "P580", "P582", "P585", "P1619",\
+        std::vector<std::string> v_props = {"P569","P570", "P571", "P575", "P576", "P577", "P580", "P582", "P585", "P1619",\
             "P3999", "P6949", "P7124", "P7125", "P10135", "P10673"};
 
         props->load_important_property(v_props);

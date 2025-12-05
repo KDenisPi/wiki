@@ -20,6 +20,8 @@ public:
     virtual ~GConfig() = default;
 
     bool debuf_print = true;
+    std::vector<std::string> lng = {"ru"};
+
     /**
      * @brief Get the debug print flag
      *
@@ -28,6 +30,15 @@ public:
      */
     inline bool is_debug_print() const {
         return debuf_print;
+    }
+
+    /**
+     * @brief Get the list of additional languages used for Item loading
+     *
+     * @return std::vector<std::string>
+     */
+    inline const std::vector<std::string> get_languages() const {
+        return lng;
     }
 };
 

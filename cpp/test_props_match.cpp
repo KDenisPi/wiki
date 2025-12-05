@@ -57,7 +57,7 @@ int main (int argc, char* argv[])
     P10673; debut date; date when a person or group is considered to have "debuted"
     */
 
-    std::vector<wiki::pID> v_props = {"P569","P570", "P571", "P575", "P577", "P580", "P582", "P585", "P1619",\
+    std::vector<wiki::pID> v_props = {"P569","P570", "P571", "P575", "P576", "P577", "P580", "P582", "P585", "P1619",\
         "P3999", "P6949", "P7124", "P7125", "P10135", "P10673"};
     ptr_props->load_important_property(v_props);
 
