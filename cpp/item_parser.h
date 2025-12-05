@@ -152,6 +152,11 @@ public:
 
     const std::string empty_val = "0";
 
+    //P4649;identity of subject in context
+    //P805;statement is subject of;(qualifying) item that describes the relation identified in this statement
+    std::vector<std::string> q_props = {"P4649", "P805"};
+
+
     /**
      * @brief
      *
@@ -237,9 +242,6 @@ public:
      * @return const data_value
      */
     const data_value parse_qualifiers(const rapidjson::Value::ConstObject& obj){
-        //P4649;identity of subject in context
-        //P805;statement is subject of;(qualifying) item that describes the relation identified in this statement
-        std::vector<std::string> q_props = {"P4649", "P805"};
 
         const auto q_order = obj.FindMember(s_qualifiers_order.c_str());
         if(obj.MemberEnd() != q_order){
