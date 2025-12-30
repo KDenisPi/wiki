@@ -26,18 +26,24 @@ namespace wiki{
 template<typename K, typename V>
 class DictClass{
 public:
-    DictClass(const std::string& name, const bool loadAtStart = false) : dict_name(name), load_at_start(loadAtStart) {
+    DictClass(const std::string& name)
+    : dict_name(name) {
         dict_filename = name + ".csv";
     }
 
     /**
-     * @brief
-     *
+     * @brief Load list of keys from the dictionary file befor loading new items
+     * Really we load data not to a main map but to the service one.
+     * This function does not make any sense if we do not want to ignore duplicate keys.
      * @param filename
      * @return true
      * @return false
      */
     virtual const int load(const std::string& filename = ""){
+        if(!ignore_dup_keys()){
+            return 0;
+        }
+
         int count = 0;
         const auto f_name = (filename.empty() ? dict_filename : filename);
 
@@ -84,7 +90,10 @@ public:
         const auto f_name = (filename.empty() ? dict_filename : filename);
 
         std::cout << "Dictionary " << dict_name << " save to: " << f_name << " Flush(" << flush << ") Size to save: " << p_dict.size();
-        if(!flush){
+        if(flush && ignore_dup_keys()){
+            std::cout << " Full size: " << p_dict_exists.size() << std::endl;
+        }
+        else{
             std::cout << std::endl;
         }
 
@@ -93,11 +102,6 @@ public:
         if(outputFile.is_open()){
             outputFile.seekg(0, std::fstream::end);
             for( auto it = p_dict.begin(); it != p_dict.end(); ++it ){
-                if(flush){
-                    //Add Item to list have already processed
-                    p_dict_exists[it->first] = "";
-                }
-
                 outputFile << it->first;
                 put_value(outputFile, it->second);
                 outputFile << std::endl;
@@ -107,7 +111,6 @@ public:
             //clean disctionalty after saving
             if(flush){
                 p_dict.clear();
-                std::cout << " Full size: " << p_dict_exists.size() << std::endl;
             }
         }
         else{
@@ -127,13 +130,15 @@ public:
      * @param val
      */
     void put(const K& key, const V& val){
-        //assert((std::string(typeid(val).name()).find("tuple") != std::string::npos));
 
         const std::lock_guard<std::mutex> lock(mtx);
+        if(ignore_dup_keys()){
+            //check if we have already had this key before
+            if( p_dict_exists.size() > 0 && p_dict_exists.end() != p_dict_exists.find(key)){
+                return;
+            }
 
-        //check if we have already had this key before
-        if( p_dict_exists.size() > 0 && p_dict_exists.end() != p_dict_exists.find(key)){
-            return;
+            p_dict_exists[key] = "";
         }
 
         p_dict[key] = val;
@@ -150,7 +155,6 @@ public:
         return load_at_start;
     }
 
-
     /**
      * @brief Set the load at start object
      *
@@ -158,6 +162,25 @@ public:
      */
     inline void set_load_at_start(const bool load_values){
         load_at_start = load_values;
+    }
+
+    /**
+     * @brief Set the ignore duplicate keys object
+     *
+     * @param ignore_duplicates
+     */
+    inline void set_ignore_dup_keys(const bool ignore_duplicates){
+        ignore_duplicate_keys = ignore_duplicates;
+    }
+
+    /**
+     * @brief Get the ignore duplicate keys object
+     *
+     * @return true
+     * @return false
+     */
+    inline const bool ignore_dup_keys() const {
+        return ignore_duplicate_keys;
     }
 
 private:
@@ -168,7 +191,17 @@ private:
     std::string dict_name;
     std::string dict_filename;
 
-    bool load_at_start = true; //we will load values from the storage at start by default but will change it sometimes
+    /*
+    We will load values from the storage at start by default but will change it
+    if the collection is too big. It will increase productivity of the system.
+    */
+    bool load_at_start = false;
+
+    /*
+    We will use additional map to chek and ignore duplicate keys
+    However sometimes we will not do it if we are sure that we will not have duplicate keys.
+    */
+    bool ignore_duplicate_keys = true;
 };
 
 }//namespace wiki

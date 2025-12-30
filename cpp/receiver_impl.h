@@ -39,6 +39,15 @@ public:
             dicts[prop] = std::make_shared<DictClass<dict_key, dict_val>>(prop);
         });
 
+        dicts["DataEvents"]->set_load_at_start(false);
+        dicts["DataEvents"]->set_ignore_dup_keys(false);
+
+        dicts["ItemsExt"]->set_load_at_start(true);
+        dicts["ItemsExt"]->set_ignore_dup_keys(true);
+
+        dicts["ItemsExtNotUsed"]->set_load_at_start(false);
+        dicts["ItemsExtNotUsed"]->set_ignore_dup_keys(false);
+
         //we do not want to load Items dictionary because we do not expect duplicate values
         //Update: We disable "load at start" by default
         //dicts["ItemsExt"]->set_load_at_start(false);
