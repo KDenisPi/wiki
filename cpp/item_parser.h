@@ -568,7 +568,10 @@ public:
             res.push_back(p31_ID); //Add "Instance of" property value
             const auto id = item_id + "_" + res[0] + "_" + res[1];
 
-            print(res);
+            if(is_debug_print()){
+                print(res);
+            }
+            
             if(_receiver){
                 _receiver->put_dictionary_value("DataEvents", id, res);
             }
