@@ -19,7 +19,7 @@ public:
     GConfig() = default;
     virtual ~GConfig() = default;
 
-    bool debug_print = false;
+    inline static bool debug_print = true;
     std::vector<std::string> lng = {"ru"};
 
     /**
@@ -28,11 +28,11 @@ public:
      * @return true
      * @return false
      */
-    inline bool is_debug_print() const {
+    inline static bool is_debug_print(){
         return debug_print;
     }
 
-    inline void set_debug_print(const bool dprint){
+    inline static void set_debug_print(const bool dprint){
         debug_print = dprint;
     }
 
