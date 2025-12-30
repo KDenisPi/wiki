@@ -28,7 +28,7 @@ class Properties{
 public:
     Properties() {
         ptr_prop = std::make_shared<rapidjson::Document>();
-        buffer = std::shared_ptr<char>(new char[2*1024*1024]); //properties.json - 1.4Mb
+        buffer = std::shared_ptr<char>(new char[MAX_LINE_LENGTH]);
     }
 
     /**
