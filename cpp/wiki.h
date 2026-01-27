@@ -275,13 +275,16 @@ public:
         [add 24.11.2025]Q93288;contract;agreement having a lawful object entered into voluntarily by multiple parties (may be explicitly written or oral)
         [Add,24.11.2025]Q11514315;historical period;segment of time in history
         [Add,24.11.2025]Q103495;world war;large-scaled international military conflict
+        [Add,26.01.2026]Q47461344;written work;any work expressed in writing, such as inscriptions, manuscripts, documents or maps    
+        [Add,26.01.2026]Q11344;chemical element;    
         */
 
         std::vector<pID> v_instance_of_values = {
             "Q5", "Q13418847", "Q1656682", "Q58687420", "Q24336466", "Q30111082", "Q2680861", "Q55814", "Q2245405",
             "Q113162275", "Q52260246", "Q110799181", "Q106518893", "Q463796", "Q1568205", "Q2136042", "Q117769381",
             "Q109975697", "Q108586636", "Q105543609", "Q107487333", "Q2188189", "Q207628", "Q22965078", "Q28146956",
-            "Q12737077", "Q135106813", "Q15839299", "Q63187345", "Q66666236", "Q6256", "Q5107", "Q93288", "Q11514315", "Q103495"
+            "Q12737077", "Q135106813", "Q15839299", "Q63187345", "Q66666236", "Q6256", "Q5107", "Q93288", "Q11514315",
+            "Q103495", "Q47461344", "Q11344"
         };
 
         props->load_instance_of_property(v_instance_of_values);

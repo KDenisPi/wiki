@@ -66,6 +66,9 @@ Q6256; country; distinct territorial body or political entity
 [Add,24.11.2025]Q11514315;historical period;segment of time in history
 [Add,24.11.2025]Q103495;world war;large-scaled international military conflict
 
+[Add,26.01.2026]Q47461344;written work;any work expressed in writing, such as inscriptions, manuscripts, documents or maps
+[Add,26,01,2026]Q11344;chemical element;species of atoms having the same number of protons in the atomic nucleus and the same chemical properties, 
+but not necessarily the same mass, or the same stability (or half-lifetime if they are unstable)
 
 5.2 List of important properties. 
 It can be updated after check some selected items.
