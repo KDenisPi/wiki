@@ -31,7 +31,7 @@ public:
      *
      */
     ReceiverImpl() {
-        std::vector<std::string> vals = {"DataEvents", "ItemsExt", "ItemsExtNotUsed"};
+        std::vector<std::string> vals = {"DataEvents", "ItemsExt", "ItemsExtNotUsed", "Attributes", "ItemClasses"};
         //std::vector<std::string> vals = {"P31", "Item"};
         load_dict_list(vals);
 
@@ -41,6 +41,14 @@ public:
 
         dicts["DataEvents"]->set_load_at_start(false);
         dicts["DataEvents"]->set_ignore_dup_keys(false);
+
+        //Both are keyed by a composite ID built from the item, so duplicates
+        //inside one flush window collapse on their own.
+        dicts["Attributes"]->set_load_at_start(false);
+        dicts["Attributes"]->set_ignore_dup_keys(false);
+
+        dicts["ItemClasses"]->set_load_at_start(false);
+        dicts["ItemClasses"]->set_ignore_dup_keys(false);
 
         dicts["ItemsExt"]->set_load_at_start(true);
         dicts["ItemsExt"]->set_ignore_dup_keys(true);

@@ -195,6 +195,62 @@ public:
     }
 
     /**
+     * @brief Load the list of classes (P31 values) used to select items.
+     * The file is the P279 closure of the seed classes from description.txt
+     * 5.1, built by build_class_closure.py. It replaces the built-in seed
+     * list, which only matches items whose P31 is a seed class itself.
+     *
+     * @param filename
+     * @return true
+     * @return false
+     */
+    bool load_class_selection(const std::string& filename){
+        return (props->load_class_selection(filename) > 0);
+    }
+
+    /**
+     * @brief Load the list of date properties to extract, replacing the
+     * built-in list from load_important_properties().
+     *
+     * @param filename
+     * @return true
+     * @return false
+     */
+    bool load_property_selection(const std::string& filename){
+        return (props->load_property_selection(filename) > 0);
+    }
+
+    /**
+     * @brief Load the list of attribute properties to extract, replacing the
+     * built-in list from load_important_properties().
+     *
+     * @param filename
+     * @return true
+     * @return false
+     */
+    bool load_attribute_selection(const std::string& filename){
+        return (props->load_attribute_selection(filename) > 0);
+    }
+
+    /**
+     * @brief Number of attribute properties extracted per item
+     *
+     * @return size_t
+     */
+    size_t attribute_count() const {
+        return props->attribute_count();
+    }
+
+    /**
+     * @brief Number of classes used for item selection
+     *
+     * @return size_t
+     */
+    size_t class_count() const {
+        return props->class_count();
+    }
+
+    /**
      * @brief
      *
      */
@@ -288,6 +344,48 @@ public:
         };
 
         props->load_instance_of_property(v_instance_of_values);
+
+        /*
+        Attribute properties (see description.txt 5.4). Dates alone answer
+        "who was born in 1400", they cannot answer "which scientists lived in
+        Germany in the 1400s" or "what happened in music in 1875" - the area
+        and the place are separate properties. For a human P31 is always Q5,
+        so without these the data has exactly one dimension, time.
+
+        Who and where:
+        P27; country of citizenship
+        P19; place of birth
+        P20; place of death
+        P937; work location
+
+        Area and subject:
+        P106; occupation
+        P101; field of work
+        P136; genre
+        P921; main subject
+
+        People behind a work:
+        P50; author
+        P86; composer
+        P170; creator
+        P175; performer
+        P676; lyricist
+
+        Events and places:
+        P17; country
+        P276; location
+        P710; participant
+        P1344; participant in
+        */
+
+        std::vector<pID> v_attribute_props = {
+            "P27", "P19", "P20", "P937",
+            "P106", "P101", "P136", "P921",
+            "P50", "P86", "P170", "P175", "P676",
+            "P17", "P276", "P710", "P1344"
+        };
+
+        props->load_attribute_property(v_attribute_props);
     }
 
 

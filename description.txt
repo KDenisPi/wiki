@@ -14,6 +14,22 @@ Process description
 3.4. Select all date/time information for properties (see 5.2 List of important properties)
 3.5. Select qulifiers for detected date, usually ItemID. Property used for qualifiers provided in 5.3
 Storage structure - ItemID, PID(property ID), ITIME(time/date string), IADD(time additinal information), QID (qualifiers, usually ItemID)
+3.6. Select attribute properties (see 5.4) - occupation, citizenship, place, genre etc. Dates alone give
+one dimension (time), attributes give the area ("music", "science") and the place ("Germany") the
+questions ask about. Storage structure - ItemID, PID, VID (value, always an ItemID)
+3.7. Store every class from 5.1 the Item belongs to, not only the first one found. An Item is often
+an instance of several of them at once. Storage structure - ItemID, QID (class)
+
+Attributes and classes are stored only for Items that have at least one date, the same rule that
+decides whether an Item goes to ItemsExt or ItemsExtNotUsed.
+
+Output files
+DataEvents.csv    - dates (3.4, 3.5)
+ItemsExt.csv      - selected Items with label/description (3.2, 3.3)
+ItemsExtNotUsed.csv - Items that matched no class or had no date
+Attributes.csv    - attribute values (3.6)
+ItemClasses.csv   - Item to class links (3.7)
+values.csv        - labels of the ItemIDs used as attribute values, made by resolve_values.py
 
 
 5.1 List of interesting instances (P31)
@@ -94,4 +110,48 @@ P10673; debut date; date when a person or group is considered to have "debuted"
 5.3. List of properties used for qualifiers
 "P805" : ["statement is subject of","(qualifying) item that describes the relation identified in this statement"],
 "P4649" : ["identity of subject in context","qualifier for subjects which may have different identities which are covered by different items, the identity to which the qualified statement applies"],
+
+5.4 List of attribute properties
+Non-date properties kept for every selected Item. Their values are always ItemIDs and are resolved
+to labels from Item.csv by resolve_values.py.
+
+Who and where
+P27; country of citizenship
+P19; place of birth
+P20; place of death
+P937; work location
+
+Area and subject
+P106; occupation
+P101; field of work
+P136; genre
+P921; main subject
+
+People behind a work
+P50; author
+P86; composer
+P170; creator
+P175; performer
+P676; lyricist
+
+Events and places
+P17; country
+P276; location
+P710; participant
+P1344; participant in
+
+5.5 Selection files
+The lists in 5.1, 5.2 and 5.4 are built into the parser as defaults but can be replaced at start up,
+so changing them does not need a rebuild:
+
+  wpars data.json properties.json position_file \
+     --classes select_classes.csv --dates date_properties.csv --attrs attribute_properties.csv
+
+Files are ';'-delimited, only the first field (the ID) is read, '#' starts a comment line.
+
+The class list matters most. Matching an Item's P31 against the 5.1 seeds alone selects almost
+nothing except humans, because Wikidata makes real Items instances of *subclasses* of those seeds
+(a battle is P31=Q178561, and Q178561 is a subclass of "event"). build_class_closure.py expands
+every seed through the P279 (subclass of) closure - 37 seeds become ~325K classes - and subtracts
+branches that are large and off topic (scholarly article alone is 45.8M Items, all of them dated).
 

@@ -11,12 +11,60 @@
 
 #include <stdlib.h>
 #include <iostream>
+#include <fstream>
 #include <fcntl.h>
 #include <unistd.h>
 
 #include "prop_dict.h"
 
 namespace wiki {
+
+/**
+ * @brief
+ *
+ * @param filename
+ * @param target
+ * @return const int
+ */
+int Properties::load_selection(const std::string& filename, std::unordered_set<pID>& target){
+    if(filename.empty()){
+        return 0;
+    }
+
+    std::ifstream inputFile(filename);
+    if(!inputFile.is_open()){
+        std::cerr << "Could not open selection file: " << filename << std::endl;
+        return -1;
+    }
+
+    //a selection file replaces the built-in list, it does not extend it
+    target.clear();
+
+    int count = 0;
+    std::string line;
+    while(std::getline(inputFile, line)){
+        //drop a trailing CR left by files edited on Windows
+        if(!line.empty() && line.back() == '\r'){
+            line.pop_back();
+        }
+
+        if(line.empty() || line[0] == '#'){
+            continue;
+        }
+
+        const auto off = line.find(';');
+        const std::string id = (off == std::string::npos ? line : line.substr(0, off));
+        if(id.empty()){
+            continue;
+        }
+
+        target.insert(id);
+        count++;
+    }
+
+    inputFile.close();
+    return count;
+}
 
 /**
  * @brief

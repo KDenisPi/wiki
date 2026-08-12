@@ -545,6 +545,50 @@ public:
     }
 
     /**
+     * @brief Store the non-date dimensions of an item (occupation, country of
+     * citizenship, place of birth, genre, ...). The values are item IDs, so
+     * they are resolved to labels later through the same Items dictionary.
+     *
+     * Values are collected instead of stored straight away: an item is only
+     * kept if it carries at least one date, and attributes of an item we drop
+     * would be rows pointing at nothing.
+     *
+     * @param it
+     * @param item_id
+     * @param collected
+     * @return number of values collected
+     */
+    int parse_attribute_claim(const rapidjson::Value::ConstMemberIterator& it, const pID& item_id,
+        std::vector<data_value>& collected){
+
+        const auto prop_name = std::string(it->name.GetString());
+        if(!_props->is_attribute_property(prop_name)){
+            return 0;
+        }
+
+        std::vector<data_value> result;
+        parse_property<data_value>(it, prop_name, result);
+
+        int stored = 0;
+        for(const data_value& res : result){
+            //keep item values only, an attribute pointing at a date is a modelling error
+            if(!is_type_wikiid(get(res, 2))){
+                continue;
+            }
+
+            const auto value_id = get(res, 1);
+            if(value_id.empty()){
+                continue;
+            }
+
+            collected.push_back({prop_name, value_id, item_id});
+            stored++;
+        }
+
+        return stored;
+    }
+
+    /**
      * @brief
      *
      * @param it
@@ -633,6 +677,9 @@ public:
                 const auto item_id = std::get<0>(itm);
                 if( !item_id.empty() ){
                     int dates_for_item = 0;
+                    prop_ids matched;                   //classes of this item we are interested in
+                    std::vector<data_value> attributes; //occupation, citizenship, place, ...
+
                     //Process item claims, one by one
                     auto claims = get()->FindMember(s_claims.c_str());
                     if( get()->MemberEnd() != claims ){
@@ -641,12 +688,20 @@ public:
                         if( claims->value.MemberEnd() != p31){
                             prop_ids pids;
                             auto insts = get_instance_of(p31, pids);
+
+                            //An item often belongs to several classes we care about (a song is
+                            //both a musical work and a written work). Keep all of them - the
+                            //first match stays on the date rows, so their format does not change.
                             for(auto p31_inst : pids){
                                 if(_props->is_useful_instance_of_value(p31_inst)){
-                                    for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
-                                        dates_for_item += parse_claim(claim, item_id, p31_inst);
-                                    }
-                                    break;
+                                    matched.push_back(p31_inst);
+                                }
+                            }
+
+                            if(!matched.empty()){
+                                for( auto claim = claims->value.MemberBegin(); claim != claims->value.MemberEnd(); ++claim ){
+                                    dates_for_item += parse_claim(claim, item_id, matched.front());
+                                    parse_attribute_claim(claim, item_id, attributes);
                                 }
                             }
                         }
@@ -656,6 +711,17 @@ public:
                     if(_receiver){
                         if(dates_for_item > 0){
                             _receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
+
+                            for(const auto& p31_inst : matched){
+                                _receiver->put_dictionary_value("ItemClasses", item_id + "_" + p31_inst,
+                                    {item_id, p31_inst});
+                            }
+
+                            for(const auto& attr : attributes){
+                                //attr is {property, value, item}
+                                _receiver->put_dictionary_value("Attributes",
+                                    attr[2] + "_" + attr[0] + "_" + attr[1], attr);
+                            }
                         }
                         else{
                             _receiver->put_dictionary_value("ItemsExtNotUsed", item_id, std::get<1>(itm));
