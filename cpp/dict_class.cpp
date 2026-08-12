@@ -19,14 +19,14 @@ namespace wiki {
 template<>
 void DictClass<std::string,std::tuple<std::string, std::string>>::put_value(std::fstream& outputFile, const std::tuple<std::string, std::string>& value){
     for_each(value, [&](const auto& val) {
-        outputFile << ";" << val;
+        write_csv_field(outputFile, val);
     });
 }
 
 template<>
 void DictClass<std::string,std::vector<std::string>>::put_value(std::fstream& outputFile, const std::vector<std::string>& value){
     for(auto val : value){
-        outputFile << ";" << val;
+        write_csv_field(outputFile, val);
     }
 }
 

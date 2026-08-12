@@ -3,6 +3,8 @@
 
 import os
 
+from csv_utils import parse_csv_line
+
 def detect_instances(filename : str) -> list:
     """
     Docstring for detect_instances
@@ -22,7 +24,7 @@ def detect_instances(filename : str) -> list:
         line = fd.readline()
         while line:
             counter += 1
-            info = line.strip().split(";")
+            info = parse_csv_line(line)
             for itm in info[8:]:
                 if itm in result:
                     continue

@@ -23,6 +23,37 @@
 
 namespace wiki{
 
+/**
+ * @brief Write a single CSV field preceded by the delimiter, quoting it
+ * (RFC4180-style, with ';' as delimiter) if it contains the delimiter,
+ * a double quote, or a newline. Embedded quotes are doubled.
+ *
+ * @param outputFile
+ * @param val
+ * @param delim
+ */
+inline void write_csv_field(std::fstream& outputFile, const std::string& val, const char delim = ';'){
+    const bool needs_quoting = val.find(delim) != std::string::npos ||
+                                val.find('"') != std::string::npos ||
+                                val.find('\n') != std::string::npos ||
+                                val.find('\r') != std::string::npos;
+
+    outputFile << delim;
+    if(!needs_quoting){
+        outputFile << val;
+        return;
+    }
+
+    outputFile << '"';
+    for(char c : val){
+        if(c == '"'){
+            outputFile << '"';
+        }
+        outputFile << c;
+    }
+    outputFile << '"';
+}
+
 template<typename K, typename V>
 class DictClass{
 public:
