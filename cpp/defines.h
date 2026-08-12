@@ -22,6 +22,20 @@ namespace wiki{
 #define MAX_LINE_LENGTH 1024*1024*5
 #define MAX_PARSING_THREADS 9 //5
 
+/**
+ * @brief Process exit codes.
+ *
+ * The parser stops after a fixed number of items instead of running the whole
+ * source in one go, so that a failure costs one chunk and not the entire run.
+ * That means the caller has to be told whether to start it again, which is
+ * what these codes are for. ERROR is 1 to match EXIT_FAILURE.
+ */
+enum ExitCode : int {
+    EXIT_MORE_DATA = 0,   //chunk processed, the source still has items left
+    EXIT_ERROR     = 1,   //something failed, do not continue
+    EXIT_ALL_DONE  = 2    //source processed to the end, nothing left to do
+};
+
 using pID = std::string;
 
 /**
