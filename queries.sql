@@ -1,12 +1,15 @@
 -- Example queries against the DuckDB database built by load_duckdb.py.
 --
--- There is no duckdb CLI in the venv, only the Python library, so run them
--- from a session:
+-- Run the whole file, or open the database and paste one query at a time:
 --
---   /home/denis/projects/venv3.11/bin/python
+--   duckdb wiki.duckdb < queries.sql
+--   duckdb wiki.duckdb
+--
+-- The Python library in /home/denis/projects/venv3.11 opens the same file
+-- (both are v1.5.5, the storage format is tied to the version):
+--
 --   >>> import duckdb
---   >>> con = duckdb.connect('wiki.duckdb')
---   >>> con.sql("<paste a query>").show()
+--   >>> duckdb.connect('wiki.duckdb').sql("<paste a query>").show()
 --
 -- Tables: items, events, attributes, item_classes, value_items, classes,
 -- properties. Queries 1 and 2 run on any build; the rest need attributes and
