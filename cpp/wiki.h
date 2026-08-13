@@ -95,11 +95,12 @@ public:
 
 
     /**
-     * @brief
+     * @brief Process one chunk of the source.
      *
-     * @return * void
+     * @return ExitCode - EXIT_MORE_DATA if the source has items left,
+     * EXIT_ALL_DONE when it was read to the end, EXIT_ERROR on failure
      */
-    void start(){
+    int start(){
 
         receiver->load();
 
@@ -122,6 +123,17 @@ public:
         th_main.join();
 
         receiver->save();
+
+        return run_result;
+    }
+
+    /**
+     * @brief Set the result the process will exit with
+     *
+     * @param result
+     */
+    void set_result(const ExitCode result){
+        run_result = result;
     }
 
     /**
@@ -501,6 +513,9 @@ private:
 
     long flush_bulk = 10000;
     unsigned long bulk_size = 0;
+
+    //stays ERROR unless the worker reaches one of its known endings
+    ExitCode run_result = ExitCode::EXIT_ERROR;
 
     long save_pos_every = 100000;  //Save position in file for every N items processed (100K*Threads)
     std::fstream position_info_stream;

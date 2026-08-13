@@ -19,6 +19,12 @@ one dimension (time), attributes give the area ("music", "science") and the plac
 questions ask about. Storage structure - ItemID, PID, VID (value, always an ItemID)
 3.7. Store every class from 5.1 the Item belongs to, not only the first one found. An Item is often
 an instance of several of them at once. Storage structure - ItemID, QID (class)
+3.8. Count the sitelinks of the Item and keep the article title for "en" and the additional languages.
+The count says how many Wikipedia editions have an article about the subject and is the only ranking
+signal available - "World War II" has 284, an unknown person has 1 - so it decides whose facts are
+worth asking about. The titles are the join key to the article text: labels do not work for that,
+there are 21 Items labelled "Symphony No. 9" and titles carry disambiguators that labels do not
+("Jing Li (chemist)" against the label "Jing Li"). Storage structure - ItemID, count, title per site
 
 Attributes and classes are stored only for Items that have at least one date, the same rule that
 decides whether an Item goes to ItemsExt or ItemsExtNotUsed.
@@ -29,6 +35,7 @@ ItemsExt.csv      - selected Items with label/description (3.2, 3.3)
 ItemsExtNotUsed.csv - Items that matched no class or had no date
 Attributes.csv    - attribute values (3.6)
 ItemClasses.csv   - Item to class links (3.7)
+ItemSites.csv     - sitelink count and article titles (3.8)
 values.csv        - labels of the ItemIDs used as attribute values, made by resolve_values.py
 
 

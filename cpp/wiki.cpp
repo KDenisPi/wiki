@@ -25,6 +25,7 @@ void WiKi::worker(){
 
     if(!reader.is_ready()){
         std::cout << "Data reader is not ready" << std::endl;
+        set_result(ExitCode::EXIT_ERROR);
     }
     else{
         auto fn_all_done = [&]() {
@@ -50,12 +51,15 @@ void WiKi::worker(){
             while(!fn_all_done());
 
             if(ItemReader::Res::OK != read_res){
-                std::cout << (ItemReader::Res::END_OF_FILE == read_res ? "End of file detected" : "Reading error detected") << std::endl;
+                const bool eof = (ItemReader::Res::END_OF_FILE == read_res);
+                std::cout << (eof ? "End of file detected" : "Reading error detected") << std::endl;
+                set_result(eof ? ExitCode::EXIT_ALL_DONE : ExitCode::EXIT_ERROR);
                 break;
             }
 
             if( is_finish() ){
                 std::cout << " Finish signal detected" << std::endl;
+                set_result(ExitCode::EXIT_MORE_DATA);
                 break;
             }
 
@@ -74,8 +78,10 @@ void WiKi::worker(){
                 std::cout << piutils::get_time_string(false) << " Items processed: " << std::to_string(counter) << " Per thread: " << std::to_string(counter/max_threads) << std::endl;
             }
 
-            //end bulk processing
+            //end bulk processing, the source still has items to read
             if( (counter/max_threads) >= get_bulk_size() ){
+                std::cout << "Chunk limit reached" << std::endl;
+                set_result(ExitCode::EXIT_MORE_DATA);
                 break;
             }
         }

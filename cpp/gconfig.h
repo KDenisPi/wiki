@@ -44,6 +44,20 @@ public:
     inline const std::vector<std::string> get_languages() const {
         return lng;
     }
+
+    /**
+     * @brief Sitelink keys matching the languages above, English first.
+     * "ru" gives "ruwiki", the key an item uses for its Russian article.
+     *
+     * @return std::vector<std::string>
+     */
+    inline const std::vector<std::string> get_sites() const {
+        std::vector<std::string> sites = {"enwiki"};
+        for(const auto& l : lng){
+            sites.push_back(l + "wiki");
+        }
+        return sites;
+    }
 };
 
 } //namespace wiki

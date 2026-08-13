@@ -148,6 +148,9 @@ public:
     const std::string s_qualifiers = "qualifiers";
     const std::string s_qualifiers_order = "qualifiers-order";
 
+    const std::string s_sitelinks = "sitelinks";
+    const std::string s_title = "title";
+
     const std::string s_P31 = "P31"; //"Instance of" property
 
     const std::string empty_val = "0";
@@ -415,6 +418,42 @@ public:
         }
 
         return std::make_tuple(id, lng_info);
+    }
+
+    /**
+     * @brief How many Wikipedia editions carry an article for this Item, plus
+     * the article title on each site we care about.
+     *
+     * The count is the notability signal: it separates "World War II" (284
+     * sitelinks) from a person with one, which is what decides whose facts are
+     * worth asking about. The titles are the join key to the article text -
+     * matching on labels instead is unreliable, there are 21 Items labelled
+     * "Symphony No. 9" and article titles carry disambiguators that labels
+     * do not ("Mercury (planet)").
+     *
+     * @param sites site keys to pick titles for, e.g. {"enwiki", "ruwiki"}
+     * @return count followed by one title per requested site, empty if the
+     * Item has no sitelinks at all
+     */
+    data_value parse_sitelinks(const std::vector<std::string>& sites){
+        data_value result;
+
+        auto doc = get();
+        const auto sitelinks = doc->FindMember(s_sitelinks.c_str());
+        if(doc->MemberEnd() == sitelinks || !sitelinks->value.IsObject()){
+            return result;
+        }
+
+        const auto sl_obj = sitelinks->value.GetObject();
+        result.push_back(std::to_string(sl_obj.MemberCount()));
+
+        for(const auto& site : sites){
+            const auto site_val = sl_obj.FindMember(site.c_str());
+            result.push_back(sl_obj.MemberEnd() == site_val
+                ? std::string() : get_str_value(site_val, s_title));
+        }
+
+        return result;
     }
 
     /**
@@ -711,6 +750,11 @@ public:
                     if(_receiver){
                         if(dates_for_item > 0){
                             _receiver->put_dictionary_value("ItemsExt", item_id, std::get<1>(itm));
+
+                            const auto sites = parse_sitelinks(get_sites());
+                            if(!sites.empty()){
+                                _receiver->put_dictionary_value("ItemSites", item_id, sites);
+                            }
 
                             for(const auto& p31_inst : matched){
                                 _receiver->put_dictionary_value("ItemClasses", item_id + "_" + p31_inst,

@@ -27,8 +27,11 @@ int main (int argc, char* argv[])
         std::cout << "Missing parameters." << std::endl
                   << "wpars data.json [properties.json position_file]"
                   << " [--classes select_classes.csv] [--dates date_properties.csv]"
-                  << " [--attrs attribute_properties.csv]" << std::endl;
-        exit(EXIT_FAILURE);
+                  << " [--attrs attribute_properties.csv] [--limit items]" << std::endl
+                  << "Exit codes: " << wiki::ExitCode::EXIT_MORE_DATA << " chunk done, more data left; "
+                  << wiki::ExitCode::EXIT_ERROR << " error; "
+                  << wiki::ExitCode::EXIT_ALL_DONE << " source fully processed" << std::endl;
+        exit(wiki::ExitCode::EXIT_ERROR);
     }
 
     //Optional selection files. They replace the lists built into wiki.h,
@@ -36,11 +39,21 @@ int main (int argc, char* argv[])
     std::string classes_file;
     std::string dates_file;
     std::string attrs_file;
+
+    //Items processed before the parser stops and asks to be started again.
+    //Default is 5M per thread, the value the runs so far have used.
+    unsigned long items_limit = 5000000UL * wiki::WiKi::max_threads;
     int positional = argc;
 
     for(int i = 1; i < argc - 1; i++){
         const std::string arg(argv[i]);
-        if(arg == "--classes" || arg == "--dates" || arg == "--attrs"){
+        if(arg == "--limit"){
+            if(i < positional){
+                positional = i;
+            }
+            items_limit = std::strtoul(argv[++i], nullptr, 10);
+        }
+        else if(arg == "--classes" || arg == "--dates" || arg == "--attrs"){
             if(i < positional){
                 positional = i;  //positional arguments end here
             }
@@ -59,7 +72,8 @@ int main (int argc, char* argv[])
 
     wiki::WiKi wk;
 
-    wk.set_bulk_size(5000000); //5M * MAX_PARSING_THREADS = 30M
+    //the loop counts items per thread, so the limit is divided the same way
+    wk.set_bulk_size(std::max(1UL, items_limit / wiki::WiKi::max_threads));
     wk.set_flush_bulk(50000); //100K * MAX_PARSING_THREADS = 600K
 
     wk.set_save_pos_every(100000);
@@ -81,7 +95,8 @@ int main (int argc, char* argv[])
     }
 
     std::cout << "Classes used for selection: " << wk.class_count()
-              << " Attribute properties: " << wk.attribute_count() << std::endl;
+              << " Attribute properties: " << wk.attribute_count()
+              << " Items limit: " << items_limit << std::endl;
 
     if(positional >= 3){
         wk.load_properties(argv[2]);
@@ -97,8 +112,11 @@ int main (int argc, char* argv[])
     }
 
     //wait untill main thread will finish (TODO: Add signal processor)
-    wk.start();
+    const int result = wk.start();
 
-    std::cout << piutils::get_time_string(false) << " finished" << std::endl;
-    exit(EXIT_SUCCESS);
+    std::cout << piutils::get_time_string(false) << " finished. Exit code: " << result
+              << (result == wiki::ExitCode::EXIT_ALL_DONE ? " (source fully processed)" :
+                  result == wiki::ExitCode::EXIT_MORE_DATA ? " (more data left, start again)" :
+                                                             " (error)") << std::endl;
+    exit(result);
 }

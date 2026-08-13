@@ -31,7 +31,7 @@ public:
      *
      */
     ReceiverImpl() {
-        std::vector<std::string> vals = {"DataEvents", "ItemsExt", "ItemsExtNotUsed", "Attributes", "ItemClasses"};
+        std::vector<std::string> vals = {"DataEvents", "ItemsExt", "ItemsExtNotUsed", "Attributes", "ItemClasses", "ItemSites"};
         //std::vector<std::string> vals = {"P31", "Item"};
         load_dict_list(vals);
 
@@ -49,6 +49,10 @@ public:
 
         dicts["ItemClasses"]->set_load_at_start(false);
         dicts["ItemClasses"]->set_ignore_dup_keys(false);
+
+        //keyed by item id, one row per item
+        dicts["ItemSites"]->set_load_at_start(false);
+        dicts["ItemSites"]->set_ignore_dup_keys(false);
 
         dicts["ItemsExt"]->set_load_at_start(true);
         dicts["ItemsExt"]->set_ignore_dup_keys(true);

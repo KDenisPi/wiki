@@ -181,6 +181,11 @@ def main():
         ("value_items", d("values.csv"),
          {"qid": "VARCHAR", "label": "VARCHAR", "description": "VARCHAR"},
          "SELECT qid, label, description FROM"),
+        ("sites", d("ItemSites.csv"),
+         {"qid": "VARCHAR", "sitelinks": "INTEGER", "enwiki": "VARCHAR", "ruwiki": "VARCHAR"},
+         # sitelinks ranks items by notability, the titles join to article text
+         "SELECT qid, sitelinks, nullif(enwiki, '') AS enwiki,"
+         " nullif(ruwiki, '') AS ruwiki FROM"),
         ("classes", c("select_classes.csv"),
          {"qid": "VARCHAR", "label": "VARCHAR", "description": "VARCHAR", "domains": "VARCHAR"},
          "SELECT qid, label, description, domains FROM"),
