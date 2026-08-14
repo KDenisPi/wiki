@@ -11,9 +11,10 @@
 --   >>> import duckdb
 --   >>> duckdb.connect('wiki.duckdb').sql("<paste a query>").show()
 --
--- Tables: items, events, attributes, item_classes, value_items, classes,
--- properties. Queries 1 and 2 run on any build; the rest need attributes and
--- item_classes, which only exist after a run made with --attrs.
+-- Tables: items, events, attributes, item_classes, sites, value_items,
+-- classes, properties - the model is in db_model.sql. Queries 1 and 2 run on
+-- any build; the rest need attributes and item_classes, which only exist after
+-- a run made with --attrs.
 
 
 -- 1. What happened in a given year in music and science.
