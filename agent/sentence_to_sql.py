@@ -17,6 +17,12 @@ Run:
     python examples/sentence_to_sql.py --sentence "..." --context1 my_stage1.txt --context2 my_stage2.txt
     python examples/sentence_to_sql.py --sentence "..." --db my.duckdb
 
+With --training-folder set, the full sentence->intent->SQL pipeline is
+skipped in favor of step2_train: every *.json file in that folder (each
+holding a stage-1 intent, i.e. what run_stage(stage1) would have produced)
+is fed straight into stage 2 (intent -> SQL) one by one.
+    python examples/sentence_to_sql.py --training-folder /path/to/intents
+
 Every model call's prompt and reply are logged here; OllamaClient's own
 @_timed logging (via the "ollama" logger) adds elapsed time and token
 counts for each call to the same log. Stage 2 (intent -> SQL) additionally
@@ -42,7 +48,7 @@ logger = logging.getLogger("examples.sentence_to_sql")
 EXAMPLES_DIR = Path(__file__).resolve().parent
 DEFAULT_CONTEXT1 = EXAMPLES_DIR / "sentence_to_sql_stage1_context.txt"
 DEFAULT_CONTEXT2 = EXAMPLES_DIR / "sentence_to_sql_stage2_context.txt"
-DEFAULT_SCHEMA = EXAMPLES_DIR / "duckdb_schema.sql"
+DEFAULT_SCHEMA = EXAMPLES_DIR / "db_model.sql"
 DEFAULT_SQL_EXAMPLES = EXAMPLES_DIR / "queries.sql"
 
 
@@ -134,7 +140,7 @@ def run_sql(db_path: str, sql: str) -> dict:
         "duckdb(%s) ok in %.2fs - %d row(s), columns=%s",
         db_path, time.perf_counter() - started, len(rows), columns,
     )
-    for row in rows:
+    for row in rows[:10]:
         print(row)
     return {"status": "success", "error": None, "row_count": len(rows)}
 
@@ -172,6 +178,59 @@ def log_training_example(
     logger.info("logged stage2 training example to %s (db_status=%s)", path, db_result["status"])
 
 
+def full_run(args: argparse.Namespace) -> None:
+    """Run the full sentence -> intent -> SQL pipeline once for args.sentence."""
+    context1 = Path(args.context1).read_text()
+    context2 = Path(args.context2).read_text()
+    schema = Path(args.schema).read_text()
+    sqlexamples = Path(args.sqlexamples).read_text()
+
+    options = {"temperature": args.temperature}
+    prompt1 = _fill(context1, sentence=args.sentence)
+    client1 = OllamaClient(args.url, args.model1, options=options)
+    intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
+    logger.info("stage1 intent (extracted):\n%s", intent)
+
+    prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
+    client2 = OllamaClient(args.url, args.model2, options=options)
+    completion = run_stage(client2, "stage2", prompt2)
+    sql = _strip_sql_fence(completion)
+
+    print("\nGenerated SQL:\n" + sql)
+    db_result = run_sql(args.db, sql)
+    log_training_example(args.training_log, args.model2, prompt2, completion, sql, db_result)
+
+
+def step2_train(args: argparse.Namespace) -> None:
+    """Run stage 2 (intent -> SQL) alone against every intent JSON file in
+    args.training_folder, one by one, logging each to the same JSONL training
+    log full_run() writes to - skips stage 1 entirely since each file already
+    holds the intent stage 1 would have produced."""
+    context2 = Path(args.context2).read_text()
+    schema = Path(args.schema).read_text()
+    sqlexamples = Path(args.sqlexamples).read_text()
+    options = {"temperature": args.temperature}
+    client2 = OllamaClient(args.url, args.model2, options=options)
+
+    training_dir = Path(args.training_folder)
+    json_files = sorted(training_dir.glob("*.json"))
+    if not json_files:
+        logger.warning("no *.json files found in training folder %s", training_dir)
+        return
+
+    for json_file in json_files:
+        intent = json_file.read_text()
+        logger.info("step2_train: %s", json_file.name)
+
+        prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
+        completion = run_stage(client2, "stage2", prompt2)
+        sql = _strip_sql_fence(completion)
+
+        print(f"\n[{json_file.name}] Generated SQL:\n" + sql)
+        db_result = run_sql(args.db, sql)
+        log_training_example(args.training_log, args.model2, prompt2, completion, sql, db_result)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Sentence -> intent -> SQL, two-stage Ollama pipeline, run against local DuckDB"
@@ -201,29 +260,20 @@ def main() -> None:
         default="sentence_to_sql_stage2_training.jsonl",
         help="JSONL file to append stage 2 (prompt, completion, execution outcome) records to",
     )
+    parser.add_argument(
+        "--training-folder",
+        default=None,
+        help="folder of stage-1 intent *.json files; when set, runs step2_train "
+        "(stage 2 only, one file at a time) instead of the full pipeline",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    context1 = Path(args.context1).read_text()
-    context2 = Path(args.context2).read_text()
-    schema = Path(args.schema).read_text()
-    sqlexamples = Path(args.sqlexamples).read_text()
-
-    options = {"temperature": args.temperature}
-    prompt1 = _fill(context1, sentence=args.sentence)
-    client1 = OllamaClient(args.url, args.model1, options=options)
-    intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
-    logger.info("stage1 intent (extracted):\n%s", intent)
-
-    prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
-    client2 = OllamaClient(args.url, args.model2, options=options)
-    completion = run_stage(client2, "stage2", prompt2)
-    sql = _strip_sql_fence(completion)
-
-    print("\nGenerated SQL:\n" + sql)
-    db_result = run_sql(args.db, sql)
-    log_training_example(args.training_log, args.model2, prompt2, completion, sql, db_result)
+    if args.training_folder:
+        step2_train(args)
+    else:
+        full_run(args)
 
 
 if __name__ == "__main__":
