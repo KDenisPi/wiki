@@ -183,3 +183,22 @@ LEFT JOIN value_items v ON v.qid = a.value
 WHERE v.qid IS NULL
 GROUP BY 1
 ORDER BY unresolved DESC;
+
+
+-- 9. Works of a named creator.
+--    Queries 5 and 6 attach attributes to show them, so they LEFT JOIN and
+--    keep rows that have none. Here the attribute IS the filter, so it is an
+--    inner JOIN and the name stands alone in the WHERE clause: a work with no
+--    creator recorded must not come back. Softening this with
+--    "OR a.property IS NULL" would let every work in the database through.
+--    The three creator properties are tested together - which one a work uses
+--    is not predictable: a book is P50, a symphony P86, a painting P170.
+SELECT i.label AS work,
+       min(e.year) AS year
+FROM items i
+JOIN attributes a  ON a.qid = i.qid AND a.property IN ('P50', 'P86', 'P170')
+JOIN value_items v ON v.qid = a.value
+LEFT JOIN events e ON e.qid = i.qid
+WHERE v.label = 'Isaac Newton'
+GROUP BY i.qid, i.label
+ORDER BY year;

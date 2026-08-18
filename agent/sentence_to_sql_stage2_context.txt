@@ -21,8 +21,12 @@ How to read the request JSON:
   spaces with % so intervening words don't block the match - name "Symphony 5" ->
   i.label ILIKE '%Symphony%5%' (matches the stored "Symphony No. 5"), not '%Symphony 5%'.
 - filters.related_entity {relation, entity_mention} -> a linked entity used to filter/disambiguate.
-  "creates" is the person<->work edge: if target_type is "work", entity_mention is the creator
-  (match through attributes P86/composer or P50/author); if "person", it is the work.
+  "creates" is the person<->work edge: if target_type is "work", entity_mention is the creator; if
+  "person", it is the work. Test the creator properties together in one condition, never pick one of
+  them - which property a work uses is not predictable (Newton's books are P50/author, a symphony is
+  P86/composer, a painting is P170/creator):
+  JOIN attributes a ON a.qid = i.qid AND a.property IN ('P50','P86','P170'),
+  JOIN value_items v ON v.qid = a."value", WHERE v."label" = '<entity_mention>'.
 - filters.occupation -> the person's occupation, stored as attribute P106 and resolved through
   value_items: JOIN attributes a ON a.qid = i.qid AND a.property = 'P106', JOIN value_items v ON
   v.qid = a.value, WHERE v.label = '<occupation>'. It is NOT a word in i.label - never write
@@ -70,9 +74,19 @@ those two joins ARE needed, and dropping them while keeping the c.domains condit
 query minimal, it makes it invalid. Use the fewest tables that answer the request, and prefer
 LEFT JOIN for anything not being filtered on.
 
+A table you DO filter on is the opposite case: join it with JOIN, not LEFT JOIN, and let its
+condition stand on its own. Never soften a filter with an escape hatch - no OR a.property IS NULL,
+no OR v.label IS NULL, no COALESCE around the filtered column. Those look protective and are the
+worst outcome available: every item that simply has no such attribute passes the test, so the filter
+is switched off and the query answers with the whole table instead of the few rows asked for. If an
+attribute filter is right, an item without that attribute must not be in the result. Put the
+property list in the ON clause and the value test in the WHERE clause.
+
 Check the query before replying: every alias in the SELECT list, WHERE clause and GROUP BY must be
 defined in the FROM/JOIN list. In particular, if c.domains appears anywhere, then both
 JOIN item_classes l ON l.qid = i.qid and JOIN classes c ON c.qid = l."class" must be in the query.
 Add the missing join rather than dropping the condition, and start the FROM list from items i.
+Check the filters too: no condition may contain OR ... IS NULL, and any attribute you filter on is
+joined with JOIN rather than LEFT JOIN.
 
 Request: {{ANSWER}}
