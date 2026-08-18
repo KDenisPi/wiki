@@ -12,9 +12,9 @@
 --   >>> duckdb.connect('wiki.duckdb').sql("<paste a query>").show()
 --
 -- Tables: items, events, attributes, item_classes, sites, value_items,
--- classes, properties - the model is in db_model.sql. Queries 1 and 2 run on
--- any build; the rest need attributes and item_classes, which only exist after
--- a run made with --attrs.
+-- classes, occupation_areas, properties - the model is in db_model.sql.
+-- Queries 1 and 2 run on any build; the rest need attributes and item_classes,
+-- which only exist after a run made with --attrs.
 
 
 -- 1. What happened in a given year in music and science.
@@ -82,10 +82,13 @@ JOIN items i      USING (qid)
 JOIN occupation o USING (qid)
 JOIN citizenship z USING (qid)
 WHERE z.country ILIKE '%German%'
-  -- until occupations are mapped to areas, name the scientific ones directly
-  AND o.occupation IN ('physicist', 'chemist', 'astronomer', 'mathematician',
-                       'naturalist', 'physician', 'alchemist', 'botanist',
-                       'geographer', 'cartographer', 'engineer')
+  -- "scientist" is an area, not a job title - only 50 people dated to this
+  -- century carry it, against 2,039 professions that occupation_areas puts
+  -- under science
+  AND EXISTS (SELECT 1 FROM attributes a
+              JOIN occupation_areas oa ON oa.qid = a."value"
+              WHERE a.qid = l.qid AND a.property = 'P106'
+                AND list_contains(str_split(oa.areas, '|'), 'science'))
   AND (l.born BETWEEN 1400 AND 1499 OR l.died BETWEEN 1400 AND 1499)
 GROUP BY i.label
 ORDER BY born;

@@ -81,6 +81,20 @@ CREATE TABLE IF NOT EXISTS value_items (
 );
 
 
+-- Which area each occupation belongs to. A question says "scientists" and P106
+-- records a profession: the 15th century has 58,088 dated people, of whom 50
+-- are labelled "scientist" and the rest are astronomers, physicians and
+-- mathematicians. Built by build_occupation_areas.py from the P279 closure of a
+-- few area roots, kept to the occupations the extract actually uses.
+-- Source: occupation_areas.csv.
+CREATE TABLE IF NOT EXISTS occupation_areas (
+    qid          VARCHAR,  -- the QID a P106 attribute row points at
+    "label"      VARCHAR,  -- e.g. astronomer
+    areas        VARCHAR,  -- '|' separated: art, literature, music, science
+    people       BIGINT    -- how many people in the extract hold it
+);
+
+
 -- -----------------------------------------------------
 -- Facts
 -- -----------------------------------------------------

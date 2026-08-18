@@ -51,8 +51,10 @@ def parse_time_cols(col: str) -> str:
 def csv(path: str, columns: dict, tolerant_ok: bool = False) -> str:
     """SQL fragment reading one of the ';'-delimited output files."""
     cols = ", ".join(f"'{n}':'{t}'" for n, t in columns.items())
+    #comment='#' so the selection files can keep their header comments; the
+    #parser's own output never starts a line with '#'
     return (f"read_csv('{path}', delim=';', quote='\"', escape='\"', header=false,"
-            f" auto_detect=false, null_padding=true, columns={{{cols}}})")
+            f" auto_detect=false, null_padding=true, comment='#', columns={{{cols}}})")
 
 
 def items_tolerant(path: str) -> str:
@@ -189,6 +191,11 @@ def main():
         ("classes", c("select_classes.csv"),
          {"qid": "VARCHAR", "label": "VARCHAR", "description": "VARCHAR", "domains": "VARCHAR"},
          "SELECT qid, label, description, domains FROM"),
+        ("occupation_areas", c("occupation_areas.csv"),
+         {"qid": "VARCHAR", "label": "VARCHAR", "areas": "VARCHAR", "people": "BIGINT"},
+         # "which scientists" means an area, the data records a profession;
+         # built by build_occupation_areas.py from the P279 closure
+         "SELECT qid, label, areas, people FROM"),
     ]
 
     for table, path, columns, select in optional:

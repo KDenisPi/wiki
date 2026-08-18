@@ -72,6 +72,21 @@ V_LABEL = 'v."label"'
 W_LABEL = 'w."label"'
 
 OCCUPATION_PROP = "P106"
+
+#An occupation word that names a whole area rather than a profession. Matching
+#those literally answers nothing useful: the 15th century holds 58,088 dated
+#people, but only 50 of them are labelled "scientist" - the rest are
+#astronomers, physicians and mathematicians. occupation_areas maps every
+#profession in the extract onto these four (build_occupation_areas.py), so the
+#area word becomes a lookup instead of a string comparison.
+OCCUPATION_AREAS = {
+    "science": "science", "scientist": "science", "scientists": "science",
+    "researcher": "science", "researchers": "science",
+    "music": "music", "musician": "music", "musicians": "music",
+    "art": "art", "artist": "art", "artists": "art",
+    "literature": "literature", "writer": "literature", "writers": "literature",
+    "author": "literature", "authors": "literature",
+}
 SUBJECT_PROPS = ("P921", "P101", "P136")       # main subject, field of work, genre
 PARTICIPANT_PROPS = ("P710", "P1344")          # participant, participant in
 BIRTH, DEATH = "P569", "P570"
@@ -131,6 +146,14 @@ def _fuzzy_match(column: str, value: str) -> str:
 def _name_match(column: str, value: str) -> str:
     """A named entity: correct spelling first, misspelling second."""
     return f"({_word_match(column, value)} OR {_fuzzy_match(column, value)})"
+
+
+def _occupation_area_exists(area: str) -> str:
+    """Does this person hold any occupation belonging to the area."""
+    return (f"EXISTS (SELECT 1 FROM attributes a"
+            f" JOIN occupation_areas oa ON oa.qid = a.\"value\""
+            f" WHERE a.qid = i.qid AND a.property = {_lit(OCCUPATION_PROP)}"
+            f" AND list_contains(str_split(oa.areas, '|'), {_lit(area)}))")
 
 
 def _attribute_exists(props, match: str) -> str:
@@ -367,6 +390,9 @@ def build_sql(intent: dict, limit: int = 200) -> str:
 
     ctes, where = [], []
     dropped = []
+    #an area can arrive twice - "which scientists" often sets both occupation
+    #and domain - and the same EXISTS twice only costs time
+    areas_applied = set()
 
     if target == "person":
         #A "person" question must come back with people. Without this, a name
@@ -385,8 +411,15 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     if filters.get("occupation"):
         #an occupation is a value in the P106 vocabulary, never a word in the
         #item's own label
-        where.append(_attribute_exists((OCCUPATION_PROP,),
-                                       _word_match(V_LABEL, filters['occupation'])))
+        occupation = str(filters["occupation"]).strip().lower()
+        area = OCCUPATION_AREAS.get(occupation)
+        if area:
+            #"scientists" is 2,039 professions, not one label
+            where.append(_occupation_area_exists(area))
+            areas_applied.add(area)
+        else:
+            where.append(_attribute_exists((OCCUPATION_PROP,),
+                                           _word_match(V_LABEL, filters['occupation'])))
 
     if filters.get("location"):
         where.append(_attribute_exists(PLACE_PROPS[target],
@@ -394,7 +427,16 @@ def build_sql(intent: dict, limit: int = 200) -> str:
 
     if filters.get("domain"):
         domain = str(filters["domain"]).lower()
-        if domain in DOMAINS:
+        if target == "person" and domain in OCCUPATION_AREAS:
+            #A person's class tag is "person" - never science or music, which
+            #describe what a work IS. For someone, the area is carried by their
+            #occupation, so "scientists in Germany" sends domain there too;
+            #applied to classes.domains it would match nobody at all.
+            area = OCCUPATION_AREAS[domain]
+            if area not in areas_applied:
+                where.append(_occupation_area_exists(area))
+                areas_applied.add(area)
+        elif domain in DOMAINS:
             where.append(f"EXISTS (SELECT 1 FROM item_classes l"
                          f" JOIN classes c ON c.qid = l.\"class\""
                          f" WHERE l.qid = i.qid AND c.domains LIKE {_lit('%' + domain + '%')})")
@@ -497,6 +539,9 @@ def _self_check(db_path: str) -> int:
                 time_constraint={"type": "in_range", "start_year": 1701, "end_year": 1800})),
         ("German mathematicians of the 1400s",
          intent("person", occupation="mathematician", location="Germany",
+                time_constraint={"type": "in_range", "start_year": 1400, "end_year": 1499})),
+        ("German scientists of the 1400s (area, not a job title)",
+         intent("person", occupation="scientists", location="Germany",
                 time_constraint={"type": "in_range", "start_year": 1400, "end_year": 1499})),
         ("composers before Beethoven",
          intent("person", occupation="composer",
