@@ -1,8 +1,19 @@
 """
-Two-stage Ollama pipeline: a sentence goes to one model with a context
-(template) file to become a plain-English data request, then that request
-goes to a second model with a different context file to become a DuckDB
-SQL query, which is then run against a local DuckDB file.
+Two-stage pipeline: a sentence goes to a model with a context (template) file
+to become a structured JSON intent, then that intent becomes a DuckDB SQL
+query, which is run against a local DuckDB file.
+
+Stage 2 is intent_to_sql.py by default, not a model. Asking a 7B model for the
+SQL produced queries that ran and returned rows while answering a different
+question - a creator name dropped and replaced with "a.property IS NOT NULL"
+(1.5M rows instead of 9), a domain filter invented against a column holding
+QIDs (0 rows). Nothing raised, because the SQL was valid. The composer builds
+the same query from the intent deterministically and hands anything it cannot
+express back to the model, which is what --sql controls:
+
+    composer  compose, ask the model only for shapes the composer refuses
+    model     the original stage-2 prompt
+    both      run each, record the composed query as the training target
 
 Schema-agnostic - point --schema at whatever DDL/description file matches
 the database you actually want SQL for; the default is just a small
@@ -42,6 +53,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "AI_agents"))
 
 from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
+
+from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
 
 logger = logging.getLogger("examples.sentence_to_sql")
 
@@ -145,8 +158,22 @@ def run_sql(db_path: str, sql: str) -> dict:
     return {"status": "success", "error": None, "row_count": len(rows)}
 
 
+def compose_sql(intent: str, limit: int):
+    """Build the SQL from the intent directly, or explain why it can't be.
+
+    Returns (sql, None) on success and (None, reason) otherwise, so the caller
+    can fall back to the model with the reason in the log."""
+    try:
+        return build_sql(json.loads(intent), limit=limit), None
+    except json.JSONDecodeError as e:
+        return None, f"stage 1 did not return JSON ({e})"
+    except Unsupported as e:
+        return None, f"intent shape not covered ({e})"
+
+
 def log_training_example(
-    path: str, model: str, prompt: str, completion: str, sql: str, db_result: dict
+    path: str, model: str, prompt: str, completion: str, sql: str, db_result: dict,
+    gold_sql: str = None, sql_source: str = "model"
 ) -> None:
     """Append one stage-2 (prompt, completion) pair to a JSONL file, for use
     later as fine-tuning data for the stage-2 model. Kept separate from the
@@ -161,13 +188,20 @@ def log_training_example(
     judgment call needs a human to look at the output, so "human_correct" is
     left null here and is meant to be hand-filled in the JSONL afterward:
     true (answered it), false (ran but wrong/empty/irrelevant), or left null
-    (not reviewed yet)."""
+    (not reviewed yet).
+
+    gold_sql is what intent_to_sql.py composed for the same intent, when it
+    could. That one is correct by construction, so it is the training target to
+    fine-tune towards and the reference to score the model's completion
+    against - the eval the db_status field cannot give on its own."""
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "model": model,
         "prompt": prompt,
         "completion": completion,
         "sql": sql,
+        "sql_source": sql_source,
+        "gold_sql": gold_sql,
         "db_status": db_result["status"],
         "db_error": db_result["error"],
         "row_count": db_result["row_count"],
@@ -185,20 +219,40 @@ def full_run(args: argparse.Namespace) -> None:
     schema = Path(args.schema).read_text()
     sqlexamples = Path(args.sqlexamples).read_text()
 
-    options = {"temperature": args.temperature}
+    options = {"temperature": args.temperature, "seed": args.seed}
     prompt1 = _fill(context1, sentence=args.sentence)
     client1 = OllamaClient(args.url, args.model1, options=options)
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
     logger.info("stage1 intent (extracted):\n%s", intent)
 
-    prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
-    client2 = OllamaClient(args.url, args.model2, options=options)
-    completion = run_stage(client2, "stage2", prompt2)
-    sql = _strip_sql_fence(completion)
+    #The composer builds the SQL from the intent itself. It is the default
+    #because a filter it is given cannot go missing, while the model has
+    #repeatedly returned SQL that ran, looked plausible and answered a
+    #different question.
+    gold, reason = (None, "not requested")
+    if args.sql in ("composer", "both"):
+        gold, reason = compose_sql(intent, args.limit)
 
-    #print("\nGenerated SQL:\n" + sql)
+    prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
+    completion, sql, source = None, gold, "composer"
+
+    if gold is None or args.sql in ("model", "both"):
+        if gold is None and args.sql != "model":
+            logger.info("falling back to the model: %s", reason)
+        client2 = OllamaClient(args.url, args.model2, options=options)
+        completion = run_stage(client2, "stage2", prompt2)
+        if gold is None:
+            sql, source = _strip_sql_fence(completion), "model"
+
+    logger.info("SQL (%s):\n%s", source, sql)
     db_result = run_sql(args.db, sql)
-    log_training_example(args.training_log, args.model2, prompt2, completion, sql, db_result)
+
+    if completion is not None:
+        #only the model's own SQL belongs in the training log as a completion
+        model_sql = _strip_sql_fence(completion)
+        model_result = db_result if source == "model" else run_sql(args.db, model_sql)
+        log_training_example(args.training_log, args.model2, prompt2, completion,
+                             model_sql, model_result, gold_sql=gold, sql_source=source)
 
 
 def step2_train(args: argparse.Namespace) -> None:
@@ -209,7 +263,7 @@ def step2_train(args: argparse.Namespace) -> None:
     context2 = Path(args.context2).read_text()
     schema = Path(args.schema).read_text()
     sqlexamples = Path(args.sqlexamples).read_text()
-    options = {"temperature": args.temperature}
+    options = {"temperature": args.temperature, "seed": args.seed}
     client2 = OllamaClient(args.url, args.model2, options=options)
 
     training_dir = Path(args.training_folder)
@@ -226,9 +280,16 @@ def step2_train(args: argparse.Namespace) -> None:
         completion = run_stage(client2, "stage2", prompt2)
         sql = _strip_sql_fence(completion)
 
+        #the composed query is the target the model is being trained towards,
+        #so it is recorded next to what the model actually produced
+        gold, reason = compose_sql(intent, args.limit)
+        if gold is None:
+            logger.info("no gold SQL for %s: %s", json_file.name, reason)
+
         print(f"\n[{json_file.name}] Generated SQL:\n" + sql)
         db_result = run_sql(args.db, sql)
-        log_training_example(args.training_log, args.model2, prompt2, completion, sql, db_result)
+        log_training_example(args.training_log, args.model2, prompt2, completion, sql,
+                             db_result, gold_sql=gold, sql_source="model")
 
 
 def main() -> None:
@@ -253,6 +314,29 @@ def main() -> None:
         default=0.0,
         help="sampling temperature for both models; 0 = greedy/deterministic, "
         "which keeps intent extraction and SQL stable run-to-run",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="sampling seed sent to Ollama. Temperature 0 alone did not make runs "
+        "repeatable here - the same sentence answered with 9 rows and later with 0 "
+        "on unchanged files - and without repeatability no prompt comparison means anything",
+    )
+    parser.add_argument(
+        "--sql",
+        choices=("composer", "model", "both"),
+        default="composer",
+        help="where the SQL comes from: 'composer' builds it from the intent in "
+        "intent_to_sql.py and only asks the model for shapes it cannot express; "
+        "'model' is the original stage-2 prompt; 'both' runs each and records the "
+        "composed query as the training target next to the model's attempt",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="row limit the composer puts on the query",
     )
     parser.add_argument("--db", default="/home/denis/projects/wiki_data/run2/wiki.duckdb", help="local DuckDB file to run the SQL against")
     parser.add_argument(
