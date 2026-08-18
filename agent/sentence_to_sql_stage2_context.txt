@@ -32,8 +32,13 @@ How to read the request JSON:
   name with a word-boundary regex - regexp_matches(v.label, '(?i)\b<place>') - rather than
   ILIKE '%<place>%', so "Russia" does not also match "Prussia"/"Byelorussia" (this still keeps
   "Russian Empire", "Tsardom of Russia").
-- filters.domain -> the classes.domains tag: JOIN item_classes -> classes, WHERE c.domains LIKE
-  '%<domain>%'; not a word in i.label.
+- filters.domain -> the classes.domains tag, reached through BOTH joins, written out in full:
+  JOIN item_classes l ON l.qid = i.qid, JOIN classes c ON c.qid = l."class", WHERE c.domains LIKE
+  '%<domain>%'. Referencing c.domains without joining classes is an error, not a shortcut: every
+  alias used anywhere in the query must appear in the FROM/JOIN list. It is NOT a word in i.label.
+  domains holds '|'-separated tags from a closed set - art, event, literature, music, person, place,
+  science - so a domain outside that set matches no row at all: map it to the nearest tag first
+  ("mathematics", "physics", "chemistry" -> science; "jazz", "opera" -> music; "poetry" -> literature).
 - filters.time_constraint -> a constraint on the target's date(s), which live in the events table
   (P569 date of birth, P570 date of death for a person; creation/publication year for a work/event).
   Pull a person's lifespan once in a CTE: max(year) FILTER (WHERE property='P569') AS born, and the
@@ -58,11 +63,16 @@ How to read the request JSON:
   happen to show. Leave any filter whose value is null out of the WHERE clause.
 
 Keep the query minimal: include a table or join only when it feeds the SELECT list or a
-WHERE/GROUP BY condition. Do not add item_classes/classes (or any other) joins the request does not
-need - an unneeded INNER join can silently drop the answer rows (e.g. a work with no class-closure
-membership). Use the fewest tables that answer the request, and prefer LEFT JOIN for anything not
-being filtered on.
+WHERE/GROUP BY condition. When filters.domain is null, do not add item_classes/classes (or any other)
+joins the request does not need - an unneeded INNER join can silently drop the answer rows (e.g. a
+work with no class-closure membership). The rule cuts both ways: when filters.domain is non-null
+those two joins ARE needed, and dropping them while keeping the c.domains condition does not make the
+query minimal, it makes it invalid. Use the fewest tables that answer the request, and prefer
+LEFT JOIN for anything not being filtered on.
 
-
+Check the query before replying: every alias in the SELECT list, WHERE clause and GROUP BY must be
+defined in the FROM/JOIN list. In particular, if c.domains appears anywhere, then both
+JOIN item_classes l ON l.qid = i.qid and JOIN classes c ON c.qid = l."class" must be in the query.
+Add the missing join rather than dropping the condition, and start the FROM list from items i.
 
 Request: {{ANSWER}}

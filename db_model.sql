@@ -64,7 +64,10 @@ CREATE TABLE IF NOT EXISTS classes (
     qid          VARCHAR,
     "label"      VARCHAR,
     description  VARCHAR,
-    domains      VARCHAR   -- comma separated, e.g. 'music,science'
+    domains      VARCHAR   -- '|' separated, e.g. 'event|literature|music'.
+                           -- A closed set of seven tags, one per seed group:
+                           -- art, event, literature, music, person, place,
+                           -- science. Any other value matches nothing.
 );
 
 -- Labels for the QIDs that turn up as attribute values (occupations,

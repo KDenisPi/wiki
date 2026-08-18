@@ -21,7 +21,8 @@ Convert the user's question into a structured JSON query intent. Extract:
   related_entity instead names a DIFFERENT entity the target is linked to (both can co-occur).
 - filters.occupation: an occupation string, or null
 - filters.location: a place name, or null
-- filters.domain: "music" | "science" | "literature" | ... or null
+- filters.domain: exactly one of "art" | "event" | "literature" | "music" | "person" | "place" |
+  "science", or null. No other value is allowed - see the mapping rule below.
 - filters.time_constraint: one of:
   {"type": "in_range", "start_year": int, "end_year": int, "precision": "year"|"decade"|"century"}
   {"type": "relative_to_entity", "relation": "overlap"|"before"|"after", "entity_mention": string}
@@ -49,18 +50,19 @@ ENTITIES (target_type)
 
 1. person — a human individual
    - occupation: one or more roles/professions (e.g. "physicist", "novelist", "musician")
-   - domain: broad field of activity ("music", "science", "literature", "politics", "sports", ...)
+   - domain: field of activity, as one of the seven tags ("music", "science", "literature", "art")
    - location: birthplace, nationality, or place of residence
    - time: birth_year, death_year (defines the person's active period)
 
 2. event — a historical or scheduled occurrence
-   - domain: category of event ("war", "election", "festival", "discovery", ...)
+   - domain: "event" for an event of any kind, or the field it belongs to when the sentence names
+     one ("music" for a concert, "science" for an eruption or an extinction)
    - location: place where the event happened
    - time: start_year, end_year (or a single year if instantaneous)
    - participants: related person entities
 
 3. work — a created output (book, song, film, paper, building, invention, discovery, theory, patent, etc.)
-   - domain: genre/field ("literature", "music", "science", ...)
+   - domain: genre/field, as one of the seven tags ("literature", "music", "science", "art")
    - creator: related person entity
    - location: place of origin or publication
    - time: creation/publication year
@@ -85,10 +87,15 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
   it with related_entity: name is the target itself; related_entity is a different, linked entity.
 - filters.occupation: only meaningful when target_type = "person"
 - filters.location: person -> birthplace/nationality; event -> where it happened; work -> place of origin
-- filters.domain: applies to any target_type. Use the most specific field/subject/category mentioned
-  in the sentence (e.g. "physics", "jazz", "French literature"), not a broader umbrella term — even
-  when both appear together (e.g. "science inventions in physics" -> domain: "physics", not "science").
-  Only fall back to a broader term when no more specific one is stated in the sentence.
+- filters.domain: applies to any target_type, and is a closed vocabulary of seven tags — art, event,
+  literature, music, person, place, science. It is not free text: the knowledge base stores exactly
+  these seven, so any other word matches nothing at all and silently empties the answer. Map whatever
+  the sentence says onto the nearest tag rather than repeating it verbatim, and prefer the umbrella
+  term over the specific one — "physics", "mathematics", "chemistry", "astronomy", "invention",
+  "discovery" -> "science"; "jazz", "opera", "symphony" -> "music"; "poetry", "novels" -> "literature";
+  "theatre", "painting" -> "art". So "science inventions in physics" -> domain: "science".
+  Use null when the sentence names no field the seven tags cover ("politics", "sports", "war"):
+  a wrong tag is worse than none, since the other filters can still answer it.
 - filters.time_constraint:
     - person -> birth_year / death_year
     - event -> start_year / end_year
@@ -150,7 +157,7 @@ Sentence: Which science inventions in physics were created in the 19th century?
     "name": null,
     "occupation": null,
     "location": null,
-    "domain": "physics",
+    "domain": "science",
     "time_constraint": {"type": "in_range", "start_year": 1801, "end_year": 1900, "precision": "century"},
     "related_entity": null,
     "compare_entities": null
@@ -180,7 +187,7 @@ Sentence: What wars happened in Europe during the 1940s?
     "name": null,
     "occupation": null,
     "location": "Europe",
-    "domain": "war",
+    "domain": "event",
     "time_constraint": {"type": "in_range", "start_year": 1940, "end_year": 1949, "precision": "decade"},
     "related_entity": null,
     "compare_entities": null
