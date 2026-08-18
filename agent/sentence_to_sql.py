@@ -196,7 +196,7 @@ def full_run(args: argparse.Namespace) -> None:
     completion = run_stage(client2, "stage2", prompt2)
     sql = _strip_sql_fence(completion)
 
-    print("\nGenerated SQL:\n" + sql)
+    #print("\nGenerated SQL:\n" + sql)
     db_result = run_sql(args.db, sql)
     log_training_example(args.training_log, args.model2, prompt2, completion, sql, db_result)
 
@@ -237,7 +237,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--sentence",
-        default="Total quantity ordered per product last month",
+        default="Invention in mathematics in 18 century in Germany",
         help="natural-language question to turn into SQL",
     )
     parser.add_argument("--context1", default=str(DEFAULT_CONTEXT1), help="stage 1 context/template file")
@@ -246,7 +246,7 @@ def main() -> None:
     parser.add_argument("--sqlexamples", default=str(DEFAULT_SQL_EXAMPLES), help="SQL examples for stage 2")
     parser.add_argument("--url", default="http://192.168.1.57:11434", help="Ollama server URL")
     parser.add_argument("--model1", default="llama3.1:8b", help="model for stage 1 (sentence -> intent)")
-    parser.add_argument("--model2", default="Qwen2.5-Coder", help="model for stage 2 (intent -> SQL)")
+    parser.add_argument("--model2", default="Qwen2.5-Coder-7B-Instruct-Q4_K_M:latest", help="model for stage 2 (intent -> SQL)")
     parser.add_argument(
         "--temperature",
         type=float,
