@@ -31,8 +31,13 @@ Run:
 With --training-folder set, the full sentence->intent->SQL pipeline is
 skipped in favor of step2_train: every *.json file in that folder (each
 holding a stage-1 intent, i.e. what run_stage(stage1) would have produced)
-is fed straight into stage 2 (intent -> SQL) one by one.
+is fed straight into stage 2 (intent -> SQL) one by one. Those files may
+wrap the intent as {"sentence": ..., "intent": {...}}; the wrapper is
+removed so stage 2 and the composer see what stage 1 would have emitted.
+--sql means the same thing there as anywhere else, and --max-files stops
+the pass early:
     python examples/sentence_to_sql.py --training-folder /path/to/intents
+    python examples/sentence_to_sql.py --training-folder ... --sql both --max-files 5
 
 Every model call's prompt and reply are logged here; OllamaClient's own
 @_timed logging (via the "ollama" logger) adds elapsed time and token
@@ -116,6 +121,42 @@ def _extract_intent_json(text: str) -> str:
             if depth == 0:
                 return text[start : i + 1]
     return text.strip()
+
+
+def _intent_text(path: Path) -> str:
+    """The intent held in a training file, as stage 1 would have produced it.
+
+    Those files are written to be read by people too, so they keep the intent
+    next to the sentence it came from:
+
+        {"sentence": "...", "intent": {"target_type": "person", ...}}
+
+    Stage 1 emits the inner object alone. Handing the envelope on gave the
+    composer nothing to dispatch on - "intent shape not covered (target_type
+    None)" for every file in the folder - and fed stage 2 a prompt the pipeline
+    never sends in production, which is exactly the prompt the training log is
+    supposed to capture. A file that is already flat is passed through.
+    """
+    raw = json.loads(path.read_text())
+    if isinstance(raw, dict):
+        raw = raw.get("intent", raw)
+    return json.dumps(raw, indent=2)
+
+
+def _lazy_client(url: str, model: str, options: dict):
+    """A no-argument factory building one OllamaClient on first call and
+    reusing it after. Stage 2 is often asked nothing at all - the composer
+    answered - and constructing a client writes a session file, so it is not
+    built until something actually needs it."""
+    client = None
+
+    def get() -> OllamaClient:
+        nonlocal client
+        if client is None:
+            client = OllamaClient(url, model, options=options)
+        return client
+
+    return get
 
 
 def run_stage(client: OllamaClient, stage_name: str, prompt: str) -> str:
@@ -225,26 +266,43 @@ def full_run(args: argparse.Namespace) -> None:
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
     logger.info("stage1 intent (extracted):\n%s", intent)
 
-    #The composer builds the SQL from the intent itself. It is the default
-    #because a filter it is given cannot go missing, while the model has
-    #repeatedly returned SQL that ran, looked plausible and answered a
-    #different question.
+    prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
+    stage2_once(args, intent, prompt2, _lazy_client(args.url, args.model2, options))
+
+
+def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
+                label: str = "") -> None:
+    """Turn one intent into SQL, run it, and record the training example.
+
+    What --sql selects:
+        composer  compose from the intent; ask the model only for the shapes
+                  the composer refuses
+        model     ask the model, and nothing else
+        both      compose and ask, run each, and record the composed query as
+                  the training target beside the model's attempt
+
+    The composer is the default because a filter it is handed cannot go
+    missing, while the model has repeatedly returned SQL that ran, looked
+    plausible and answered a different question.
+
+    Shared by full_run and step2_train so a training record always holds the
+    prompt the pipeline really sends - a record built from some other prompt is
+    worse than no record, since fine-tuning on it teaches the wrong input.
+    """
     gold, reason = (None, "not requested")
     if args.sql in ("composer", "both"):
         gold, reason = compose_sql(intent, args.limit)
+        if gold is None:
+            logger.info("%scomposer declined, using the model: %s", label, reason)
 
-    prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
     completion, sql, source = None, gold, "composer"
 
     if gold is None or args.sql in ("model", "both"):
-        if gold is None and args.sql != "model":
-            logger.info("falling back to the model: %s", reason)
-        client2 = OllamaClient(args.url, args.model2, options=options)
-        completion = run_stage(client2, "stage2", prompt2)
+        completion = run_stage(get_client(), "stage2", prompt2)
         if gold is None:
             sql, source = _strip_sql_fence(completion), "model"
 
-    logger.info("SQL (%s):\n%s", source, sql)
+    logger.info("%sSQL (%s):\n%s", label, source, sql)
     db_result = run_sql(args.db, sql)
 
     if completion is not None:
@@ -256,15 +314,19 @@ def full_run(args: argparse.Namespace) -> None:
 
 
 def step2_train(args: argparse.Namespace) -> None:
-    """Run stage 2 (intent -> SQL) alone against every intent JSON file in
+    """Run stage 2 (intent -> SQL) alone against the intent JSON files in
     args.training_folder, one by one, logging each to the same JSONL training
     log full_run() writes to - skips stage 1 entirely since each file already
-    holds the intent stage 1 would have produced."""
+    holds the intent stage 1 would have produced.
+
+    --sql applies here as it does anywhere else, and --max-files cuts the pass
+    short: a full folder is one model call per file, so a mistake in the
+    prompts is cheaper to find over the first few than over all of them."""
     context2 = Path(args.context2).read_text()
     schema = Path(args.schema).read_text()
     sqlexamples = Path(args.sqlexamples).read_text()
     options = {"temperature": args.temperature, "seed": args.seed}
-    client2 = OllamaClient(args.url, args.model2, options=options)
+    get_client = _lazy_client(args.url, args.model2, options)
 
     training_dir = Path(args.training_folder)
     json_files = sorted(training_dir.glob("*.json"))
@@ -272,24 +334,23 @@ def step2_train(args: argparse.Namespace) -> None:
         logger.warning("no *.json files found in training folder %s", training_dir)
         return
 
+    found = len(json_files)
+    if args.max_files > 0:
+        json_files = json_files[: args.max_files]
+    logger.info("step2_train: %d of %d file(s) in %s, sql=%s",
+                len(json_files), found, training_dir, args.sql)
+
     for json_file in json_files:
-        intent = json_file.read_text()
         logger.info("step2_train: %s", json_file.name)
+        try:
+            intent = _intent_text(json_file)
+        except json.JSONDecodeError as e:
+            #one unparseable file must not end a run of a hundred others
+            logger.error("skipping %s: not JSON (%s)", json_file.name, e)
+            continue
 
         prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
-        completion = run_stage(client2, "stage2", prompt2)
-        sql = _strip_sql_fence(completion)
-
-        #the composed query is the target the model is being trained towards,
-        #so it is recorded next to what the model actually produced
-        gold, reason = compose_sql(intent, args.limit)
-        if gold is None:
-            logger.info("no gold SQL for %s: %s", json_file.name, reason)
-
-        print(f"\n[{json_file.name}] Generated SQL:\n" + sql)
-        db_result = run_sql(args.db, sql)
-        log_training_example(args.training_log, args.model2, prompt2, completion, sql,
-                             db_result, gold_sql=gold, sql_source="model")
+        stage2_once(args, intent, prompt2, get_client, label=f"[{json_file.name}] ")
 
 
 def main() -> None:
@@ -349,6 +410,14 @@ def main() -> None:
         default=None,
         help="folder of stage-1 intent *.json files; when set, runs step2_train "
         "(stage 2 only, one file at a time) instead of the full pipeline",
+    )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=0,
+        help="stop after this many files of --training-folder (0 = all of them). "
+        "A full folder is one model call per file, so this is how to cut a run "
+        "short once the first few show something is wrong",
     )
     args = parser.parse_args()
 
