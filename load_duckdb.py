@@ -88,6 +88,34 @@ def items_tolerant(path: str) -> str:
         WHERE qid <> ''"""
 
 
+def backfill_labels(con):
+    """Give the English Wikipedia article title to Items that came out of the
+    parser with no English label.
+
+    Wikidata moved labels that read the same in every language into a single
+    labels.mul entry and dropped labels.en for those Items, so the 2025-09-22
+    dump has Q762 (Leonardo da Vinci) with no English label at all - 1.6M
+    Items in that run, and the migration went through the most-linked Items
+    first, which is why the ones people ask about are exactly the ones missing.
+    cpp/item_parser.h now reads labels.mul when labels.en is absent, so a
+    reparse fixes this at the source; this repairs what is already loaded.
+
+    Only Items with an English Wikipedia article can be repaired here (2,247 of
+    them in run2) - the rest need the reparse. The title is not quite a label,
+    since it carries a disambiguator now and then ("Mercury (planet)"), which
+    is close enough to find the Item and better than a NULL that matches
+    nothing."""
+    tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
+    if not {"items", "sites"} <= tables:
+        return
+
+    repaired = con.execute("""
+        UPDATE items SET "label" = s.enwiki FROM sites s
+        WHERE s.qid = items.qid AND items."label" IS NULL AND s.enwiki IS NOT NULL
+        """).fetchone()[0]
+    print(f"  labels backfilled from enwiki titles: {repaired:,}")
+
+
 def load_properties(con, props_file, date_file, attr_file):
     """Property dictionary, tagged with the role each property plays here."""
     if not os.path.exists(props_file):
@@ -206,6 +234,7 @@ def main():
         print(f"  {table}: {con.sql(f'SELECT count(*) FROM {table}').fetchone()[0]:,}")
 
     load_properties(con, args.properties, c("date_properties.csv"), c("attribute_properties.csv"))
+    backfill_labels(con)
 
     con.close()
     print("done")

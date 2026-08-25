@@ -132,6 +132,7 @@ public:
     const std::string s_label = "labels";
     const std::string s_descr = "descriptions";
     const std::string s_lng_en = "en";
+    const std::string s_lng_mul = "mul";
     const std::string s_claims = "claims";
     const std::string s_value = "value";
     const std::string s_property = "property";
@@ -398,7 +399,15 @@ public:
             return std::make_tuple(std::string(), lng_info);
         }
 
-        const auto label = get_sub_name(doc, s_label, s_lng_en, s_value);
+        //Wikidata moved labels that read the same in every language into a
+        //single "mul" entry, and deleted labels.en for those Items - the
+        //2025-09-22 dump has Q762 (Leonardo da Vinci) with labels.mul and no
+        //labels.en, which is why 1.6M Items came out of that run unlabelled
+        //while their English descriptions, never migrated, came through.
+        auto label = get_sub_name(doc, s_label, s_lng_en, s_value);
+        if(label.empty()){
+            label = get_sub_name(doc, s_label, s_lng_mul, s_value);
+        }
         const auto descr = get_sub_name(doc, s_descr, s_lng_en, s_value);
 
         lng_info.push_back(label);
