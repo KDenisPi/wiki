@@ -23,10 +23,11 @@ Requests go out one at a time. Both models sit on the same machine (and often
 the same GPU), so anything concurrent would be measuring the queue rather than
 the models.
 
-Caveat worth keeping in mind while reading the numbers: if these cases were in
-the fine-tuning set, the tuned column is memorization, not generalization, and
-is an upper bound on what the model will do with a question it has not seen.
---filter and --max-cases are there to score a held-out slice.
+A case the model was fine-tuned on measures memorization, not generalization,
+and only the held-out cases say what it will do with a question it has not
+seen. Hand --splits the train and eval files the tuning run was fed and every
+number is reported per split as well as overall; without them the whole set is
+scored together and should be read as an upper bound.
 
 Run:
     python compare_models.py                         # 144 cases, both servers, DuckDB
@@ -34,12 +35,15 @@ Run:
     python compare_models.py --filter compare_       # one family of question shapes
     python compare_models.py --cases full_20260920.jsonl   # the training log's own prompts
     python compare_models.py --no-db                 # generate and diff SQL only, no database
+    python compare_models.py --splits full_20260920_train.jsonl full_20260920_eval.jsonl
+    python compare_models.py --report model_compare_full.jsonl --splits ...  # rescore, no calls
 
 Every case is written to --out as it finishes, so a run stopped halfway still
 leaves the cases it did get through, with both completions in full for reading.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import statistics
@@ -300,6 +304,83 @@ def load_cases(args: argparse.Namespace) -> list:
     return cases
 
 
+def _record_prompt(record: dict):
+    """The prompt out of one line of a split file, whichever way the tuning
+    script chose to write it - a plain field, a chat message list, or one of
+    the usual field names. A split file that says nothing recognizable is
+    reported as unmatched rather than silently labelling nothing."""
+    if isinstance(record.get("prompt"), str):
+        return record["prompt"]
+    messages = record.get("messages")
+    if isinstance(messages, list):
+        users = [m.get("content") for m in messages
+                 if isinstance(m, dict) and m.get("role") == "user"]
+        if users and isinstance(users[-1], str):
+            return users[-1]
+    for field in ("input", "text", "instruction", "question"):
+        if isinstance(record.get(field), str):
+            return record[field]
+    return None
+
+
+def case_key(intent=None, prompt: str = None) -> str:
+    """What identifies a case across files: the intent it was built from.
+
+    A split file holds prompts, an intent file holds the intent, and the prompt
+    ends with the intent verbatim ("Request: {...}"), so the intent is the one
+    thing both certainly share - and it survives an edit to the schema or the
+    examples pasted into the prompt, which a hash of the whole prompt does not.
+    Prompts that do not carry a readable intent fall back to a hash of the
+    text, which still matches an unchanged prompt against itself."""
+    if intent is None and prompt is not None:
+        tail = prompt.rsplit("Request:", 1)[-1] if "Request:" in prompt else prompt
+        try:
+            intent = json.loads(tail.strip())
+        except json.JSONDecodeError:
+            return "prompt:" + hashlib.sha256(prompt.strip().encode()).hexdigest()
+    return "intent:" + json.dumps(intent, sort_keys=True)
+
+
+def load_splits(paths: list) -> dict:
+    """case_key -> split name, from the files the tuning run was fed.
+
+    The name is the tail of the file name (full_20260920_train.jsonl ->
+    "train"), which is how these are named in practice and keeps the report
+    readable without another flag."""
+    labels = {}
+    for path in paths:
+        label = Path(path).stem.split("_")[-1]
+        matched = 0
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                prompt = _record_prompt(json.loads(line))
+                if prompt is None:
+                    continue
+                labels[case_key(prompt=prompt)] = label
+                matched += 1
+        logger.info("split %s: %d prompt(s) from %s", label, matched, path)
+    return labels
+
+
+def attach_splits(cases: list, labels: dict) -> None:
+    """Tag each case with the split it came from, or "unsplit" when the tuning
+    files do not account for it - a case in neither file was neither trained on
+    nor evaluated, and lumping it in with either would misreport both."""
+    for case in cases:
+        #a detail record from an earlier run carries the intent but not the
+        #prompt, a JSONL case the prompt but not the intent - either identifies it
+        if case.get("intent") is not None:
+            key = case_key(intent=case["intent"])
+        elif case.get("prompt") is not None:
+            key = case_key(prompt=case["prompt"])
+        else:
+            key = None
+        case["split"] = labels.get(key, "unsplit") if key else "unsplit"
+
+
 def attach_gold(cases: list, limit: int) -> None:
     """Compose the reference query for every case that did not bring one.
 
@@ -324,6 +405,7 @@ def run_case(case: dict, endpoints: list, db, args: argparse.Namespace) -> dict:
 
     detail = {
         "case": case["case"],
+        "split": case.get("split", "unsplit"),
         "sentence": case["sentence"],
         "intent": case["intent"],
         "prompt_chars": len(case["prompt"]),
@@ -428,7 +510,7 @@ def summarize(details: list, endpoints: list) -> dict:
     return summary
 
 
-def print_summary(summary: dict, endpoints: list) -> None:
+def print_summary(summary: dict, endpoints: list, title: str = "all cases") -> None:
     keys = [e.key for e in endpoints]
     width = 14
 
@@ -437,7 +519,7 @@ def print_summary(summary: dict, endpoints: list) -> None:
         print(f"  {label:<24}{cells}")
 
     print("\n" + "=" * (26 + width * len(keys)))
-    print(f"  {summary['cases']} case(s)")
+    print(f"  {title} - {summary['cases']} case(s)")
     print("=" * (26 + width * len(keys)))
     row("", keys)
     per = summary["per_model"]
@@ -471,6 +553,34 @@ def print_summary(summary: dict, endpoints: list) -> None:
     print()
 
 
+def emit(details: list, endpoints: list, summary_path: Path, extra: dict) -> dict:
+    """Print and save the scoreboard: one table per split, then all cases.
+
+    Trained-on and held-out cases answer different questions and averaging them
+    answers neither, so the split tables come first and the overall one last."""
+    summary = summarize(details, endpoints)
+    summary.update(extra)
+
+    splits = sorted({d.get("split", "unsplit") for d in details})
+    by_split = ({s: summarize([d for d in details if d.get("split", "unsplit") == s], endpoints)
+                 for s in splits} if splits != ["unsplit"] else {})
+    summary["by_split"] = by_split
+
+    summary_path.write_text(json.dumps(summary, indent=2))
+    for name, part in by_split.items():
+        print_summary(part, endpoints, title=f"split: {name}")
+    print_summary(summary, endpoints, title="all cases")
+    logger.info("summary -> %s", summary_path)
+    return summary
+
+
+def load_details(path: str) -> list:
+    """The per-case records of an earlier run, for rescoring it without asking
+    either server anything again."""
+    with open(path) as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run the same stage-2 prompts against the tuned and the base model, "
@@ -485,6 +595,16 @@ def main() -> None:
     )
     parser.add_argument("--filter", default=None,
                         help="only cases whose name contains this string")
+    parser.add_argument("--splits", nargs="*", default=[],
+                        help="the JSONL files the tuning run was fed (e.g. "
+                        "full_20260920_train.jsonl full_20260920_eval.jsonl). Each case is "
+                        "labelled by the file its intent appears in and every number is "
+                        "reported per split - held-out cases are the ones that say whether "
+                        "the model learned the task or the answers")
+    parser.add_argument("--report", default=None,
+                        help="rescore the detail JSONL of an earlier run and exit: prints the "
+                        "same tables, asks neither server nor the database anything. Use it to "
+                        "apply --splits to a pass that already ran")
     parser.add_argument("--max-cases", type=int, default=0,
                         help="stop after this many cases (0 = all of them). Two model calls "
                         "plus up to three queries per case, so a full pass takes tens of minutes")
@@ -534,6 +654,23 @@ def main() -> None:
 
     out_path = Path(args.out) if args.out else AGENT_DIR / (
         "model_compare_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S") + ".jsonl")
+    labels = load_splits(args.splits) if args.splits else {}
+
+    if args.report:
+        #rescoring an existing run: the servers are not asked for the model
+        #names either, since the point is that nothing is called
+        endpoints = [Endpoint("tuned", args.tuned_url, args.tuned_model or "(from report)"),
+                     Endpoint("base", args.base_url, args.base_model)]
+        details = load_details(args.report)
+        if labels:
+            attach_splits(details, labels)
+        unsplit = sum(1 for d in details if d.get("split", "unsplit") == "unsplit")
+        if labels and unsplit:
+            logger.warning("%d of %d case(s) matched no split file", unsplit, len(details))
+        emit(details, endpoints,
+             Path(args.report).with_suffix(".summary.json"),
+             {"detail_file": args.report, "splits": args.splits})
+        return
 
     tuned_model = args.tuned_model or discover_model(args.tuned_url)
     endpoints = [Endpoint("tuned", args.tuned_url, tuned_model),
@@ -551,6 +688,11 @@ def main() -> None:
         logger.error("no cases to run from %s", args.cases)
         return
     attach_gold(cases, args.limit)
+    if labels:
+        attach_splits(cases, labels)
+        unsplit = sum(1 for c in cases if c["split"] == "unsplit")
+        if unsplit:
+            logger.warning("%d of %d case(s) matched no split file", unsplit, len(cases))
     with_gold = sum(1 for c in cases if c["gold_sql"])
     logger.info("%d of %d case(s) from %s, %d with reference SQL, detail -> %s",
                 len(cases), found, args.cases, with_gold, out_path)
@@ -575,14 +717,9 @@ def main() -> None:
             out.flush()
 
     logger.info("%d case(s) in %.0fs", len(details), time.perf_counter() - started)
-    summary = summarize(details, endpoints)
-    summary["cases_file"] = str(args.cases)
-    summary["db"] = None if db is None else args.db
-    summary["detail_file"] = str(out_path)
-    summary_path = out_path.with_suffix(".summary.json")
-    summary_path.write_text(json.dumps(summary, indent=2))
-    print_summary(summary, endpoints)
-    logger.info("summary -> %s", summary_path)
+    emit(details, endpoints, out_path.with_suffix(".summary.json"),
+         {"cases_file": str(args.cases), "db": None if db is None else args.db,
+          "detail_file": str(out_path), "splits": args.splits})
 
 
 if __name__ == "__main__":
