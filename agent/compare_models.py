@@ -111,13 +111,21 @@ def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace) -> dict:
 
     A server that is down or slow must not end a run of a hundred cases, so a
     failure here is recorded as this model's answer to this case (no SQL) and
-    the run continues."""
+    the run continues.
+
+    max_tokens is not optional here. llama-server generates until the context
+    is full when no cap is given, and the tuned model does run away on some
+    prompts - it starts a plausible query and then enumerates 'P44', 'P45',
+    'P46' ... forever. Uncapped that is 27k tokens, fifteen minutes, and a
+    verdict of "the server timed out" for what is really "the model did not
+    stop". Capped it is twenty seconds and a truncated reply that says so."""
     body = {
         "model": endpoint.model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": args.temperature,
         "seed": args.seed,
         "stream": False,
+        "max_tokens": args.max_tokens,
     }
     started = time.perf_counter()
     try:
@@ -126,20 +134,28 @@ def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace) -> dict:
         )
         response.raise_for_status()
         data = response.json()
-        completion = data["choices"][0]["message"]["content"]
+        choice = data["choices"][0]
+        completion = choice["message"]["content"]
     except Exception as e:
         elapsed = time.perf_counter() - started
         logger.warning("%s failed after %.1fs: %s", endpoint.key, elapsed, e)
         return {"completion": None, "sql": None, "error": str(e), "seconds": elapsed,
-                "completion_tokens": None}
+                "completion_tokens": None, "finish_reason": None}
 
     usage = data.get("usage") or {}
+    finish_reason = choice.get("finish_reason")
+    if finish_reason == "length":
+        #kept apart from a parse failure: the SQL is unusable either way, but
+        #"it never stopped" and "it wrote something wrong" are different faults
+        logger.warning("%s hit the %d token cap - reply cut off, not a finished answer",
+                       endpoint.key, args.max_tokens)
     return {
         "completion": completion,
         "sql": _strip_sql_fence(completion) or None,
         "error": None,
         "seconds": time.perf_counter() - started,
         "completion_tokens": usage.get("completion_tokens"),
+        "finish_reason": finish_reason,
     }
 
 
@@ -625,6 +641,11 @@ def main() -> None:
                         "been enough to make runs repeatable here")
     parser.add_argument("--request-timeout", type=float, default=600.0,
                         help="seconds to wait for one model reply")
+    parser.add_argument("--max-tokens", type=int, default=1024,
+                        help="cap on the reply, so a model that never emits end-of-text is cut "
+                        "off in seconds instead of generating until the context is full. 1024 is "
+                        "well clear of anything legitimate: the longest completion in the "
+                        "training log is ~540 tokens and the longest correct answer seen here 299")
     parser.add_argument("--context2", default=str(DEFAULT_CONTEXT2),
                         help="stage 2 context/template file (folder cases only)")
     parser.add_argument("--schema", default=str(DEFAULT_SCHEMA),
