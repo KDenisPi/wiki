@@ -61,7 +61,7 @@ from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
 
-logger = logging.getLogger("examples.sentence_to_sql")
+logger = logging.getLogger("sentence_to_sql")
 
 EXAMPLES_DIR = Path(__file__).resolve().parent
 DEFAULT_CONTEXT1 = EXAMPLES_DIR / "sentence_to_sql_stage1_context.txt"
@@ -195,7 +195,7 @@ def run_sql(db_path: str, sql: str) -> dict:
         db_path, time.perf_counter() - started, len(rows), columns,
     )
     for row in rows[:10]:
-        print(row)
+        logger.info(row)
     return {"status": "success", "error": None, "row_count": len(rows)}
 
 
