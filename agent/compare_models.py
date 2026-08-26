@@ -118,7 +118,10 @@ def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace) -> dict:
     prompts - it starts a plausible query and then enumerates 'P44', 'P45',
     'P46' ... forever. Uncapped that is 27k tokens, fifteen minutes, and a
     verdict of "the server timed out" for what is really "the model did not
-    stop". Capped it is twenty seconds and a truncated reply that says so."""
+    stop". Capped it is twenty seconds and a truncated reply that says so.
+
+    The same value goes to both endpoints, frequency_penalty included, so a
+    difference between the two columns stays a difference between the models."""
     body = {
         "model": endpoint.model,
         "messages": [{"role": "user", "content": prompt}],
@@ -126,6 +129,7 @@ def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace) -> dict:
         "seed": args.seed,
         "stream": False,
         "max_tokens": args.max_tokens,
+        "frequency_penalty": args.frequency_penalty,
     }
     started = time.perf_counter()
     try:
@@ -649,6 +653,13 @@ def main() -> None:
                         "been enough to make runs repeatable here")
     parser.add_argument("--request-timeout", type=float, default=600.0,
                         help="seconds to wait for one model reply")
+    parser.add_argument("--frequency-penalty", type=float, default=0.0,
+                        help="penalise tokens by how often they have already been used. 0 is "
+                        "greedy, which is the honest control for measuring what tuning taught. "
+                        "0.3 is what breaks the tuned model out of its repetition loop - it "
+                        "finished all three cut-off cases tried by hand, and faster (27s -> 8s). "
+                        "Not free: SQL repeats tokens legitimately, so a penalty can spoil a "
+                        "query that was already right. Compare a whole run before believing it")
     parser.add_argument("--max-tokens", type=int, default=1024,
                         help="cap on the reply, so a model that never emits end-of-text is cut "
                         "off in seconds instead of generating until the context is full. 1024 is "
@@ -748,7 +759,11 @@ def main() -> None:
     logger.info("%d case(s) in %.0fs", len(details), time.perf_counter() - started)
     emit(details, endpoints, out_path.with_suffix(".summary.json"),
          {"cases_file": str(args.cases), "db": None if db is None else args.db,
-          "detail_file": str(out_path), "splits": args.splits})
+          "detail_file": str(out_path), "splits": args.splits,
+          #kept with the scores because they change them: two summary files are
+          #only comparable when these match
+          "temperature": args.temperature, "frequency_penalty": args.frequency_penalty,
+          "max_tokens": args.max_tokens})
 
 
 if __name__ == "__main__":
