@@ -31,7 +31,7 @@ back to the model rather than get a confidently wrong query.
     ...                                           "entity_mention": "Isaac Newton"}}})
 
 Self-check (builds SQL for a set of intents and runs each one):
-    python intent_to_sql.py --db /home/denis/projects/wiki_data/run2/wiki.duckdb
+    python intent_to_sql.py --db /home/denis/projects/wiki_data/run3/wiki.duckdb
 """
 
 import json
@@ -604,7 +604,7 @@ def _self_check(db_path: str) -> int:
 
 
 if __name__ == "__main__":
-    db = "/home/denis/projects/wiki_data/run2/wiki.duckdb"
+    db = "/home/denis/projects/wiki_data/run3/wiki.duckdb"
     args = sys.argv[1:]
     if args and args[0] == "--db":
         db = args[1]

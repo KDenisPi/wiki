@@ -654,7 +654,7 @@ def main() -> None:
                         help="SQL examples pasted into the prompt (folder cases only)")
     parser.add_argument("--limit", type=int, default=200,
                         help="row limit the composer puts on the reference query")
-    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run2/wiki.duckdb",
+    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run3/wiki.duckdb",
                         help="DuckDB file to execute every query against, opened read-only")
     parser.add_argument("--no-db", action="store_true",
                         help="skip execution entirely - collects and diffs the SQL only, "
