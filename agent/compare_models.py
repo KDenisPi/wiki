@@ -333,6 +333,14 @@ def _record_prompt(record: dict):
                  if isinstance(m, dict) and m.get("role") == "user"]
         if users and isinstance(users[-1], str):
             return users[-1]
+    #ShareGPT, which is what the tuning script actually wrote: a "conversations"
+    #list of {"from": "human"/"gpt", "value": ...} rather than role/content
+    conversations = record.get("conversations")
+    if isinstance(conversations, list):
+        humans = [m.get("value") for m in conversations
+                  if isinstance(m, dict) and m.get("from") in ("human", "user")]
+        if humans and isinstance(humans[-1], str):
+            return humans[-1]
     for field in ("input", "text", "instruction", "question"):
         if isinstance(record.get(field), str):
             return record[field]
