@@ -33,9 +33,9 @@ Run:
     python compare_models.py                         # 144 cases, both servers, DuckDB
     python compare_models.py --max-cases 5           # a quick end-to-end check
     python compare_models.py --filter compare_       # one family of question shapes
-    python compare_models.py --cases full_20260920.jsonl   # the training log's own prompts
+    python compare_models.py --cases 20260922.jsonl   # the training log's own prompts
     python compare_models.py --no-db                 # generate and diff SQL only, no database
-    python compare_models.py --splits full_20260920_train.jsonl full_20260920_eval.jsonl
+    python compare_models.py --splits 20260922_train.jsonl 20260922_eval.jsonl
     python compare_models.py --report model_compare_full.jsonl --splits ...  # rescore, no calls
 
 Every case is written to --out as it finishes, so a run stopped halfway still
@@ -380,7 +380,7 @@ def case_key(intent=None, prompt: str = None) -> str:
 def load_splits(paths: list) -> dict:
     """case_key -> split name, from the files the tuning run was fed.
 
-    The name is the tail of the file name (full_20260920_train.jsonl ->
+    The name is the tail of the file name (20260922_train.jsonl ->
     "train"), which is how these are named in practice and keeps the report
     readable without another flag."""
     labels = {}
@@ -644,7 +644,7 @@ def main() -> None:
                         help="only cases whose name contains this string")
     parser.add_argument("--splits", nargs="*", default=[],
                         help="the JSONL files the tuning run was fed (e.g. "
-                        "full_20260920_train.jsonl full_20260920_eval.jsonl). Each case is "
+                        "20260922_train.jsonl 20260922_eval.jsonl). Each case is "
                         "labelled by the file its intent appears in and every number is "
                         "reported per split - held-out cases are the ones that say whether "
                         "the model learned the task or the answers")

@@ -3,7 +3,7 @@
 """Turn an eval log from sentence_to_sql.py into an Unsloth SFT dataset,
 split into train/eval by variant.
 
-full_20260920.jsonl is one row per stage-2 run: `prompt` is the schema +
+20260922.jsonl is one row per stage-2 run: `prompt` is the schema +
 rules + intent request fed to the model, `completion`/`sql` is what the
 local model (Qwen2.5-Coder-7B here, see the `model` field) answered, and
 `gold_sql` is the correct query composed by agent/intent_to_sql.py's
@@ -160,13 +160,13 @@ def write_jsonl(path: str, examples: list) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", nargs="?", default="full_20260920.jsonl")
+    parser.add_argument("input", nargs="?", default="20260922.jsonl")
     parser.add_argument("--intents-dir", default="training/training_intents",
                          help="directory of {sentence, intent} files that name each variant")
     parser.add_argument("--trainvariants", default="TRAINVARIANTS.md",
                          help="doc that groups variants into filter-type categories")
-    parser.add_argument("--train-out", default="full_20260920_train.jsonl")
-    parser.add_argument("--eval-out", default="full_20260920_eval.jsonl")
+    parser.add_argument("--train-out", default="20260922_train.jsonl")
+    parser.add_argument("--eval-out", default="20260922_eval.jsonl")
     parser.add_argument("--eval-frac", type=float, default=0.15,
                          help="fraction of each category's variants (not rows) held out for eval")
     parser.add_argument("--seed", type=int, default=0,
