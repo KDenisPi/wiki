@@ -60,6 +60,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "AI_agent
 from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
+from model_retry import (  # noqa: E402 - sibling module
+    DEFAULT_RETRY_PENALTY,
+    was_cut_off,
+    with_cutoff_retry,
+)
 
 logger = logging.getLogger("sentence_to_sql")
 
@@ -313,6 +318,39 @@ def full_run(args: argparse.Namespace) -> None:
     stage2_once(args, intent, prompt2, _lazy_client(args.url2, args.model2, options, args.request_timeout))
 
 
+def _ask_stage2(get_client, prompt: str, frequency_penalty: float) -> dict:
+    """One stage-2 call, in the shape model_retry.with_cutoff_retry expects.
+
+    OllamaClient returns the reply text alone, but keeps the whole response on
+    itself for its own log line - which is the only place finish_reason is to
+    be had without a second request. Read defensively: a client that stopped
+    recording it should cost a retry, not an AttributeError.
+
+    The penalty is applied by swapping the client's options for the one call.
+    They are spread into the request body as they stand at request time, and
+    put back afterwards so the next call is unaffected."""
+    client = get_client()
+    saved = dict(client.options)
+    if frequency_penalty:
+        client.options = {**saved, "frequency_penalty": frequency_penalty}
+    started = time.perf_counter()
+    try:
+        completion = run_stage(client, "stage2", prompt)
+    finally:
+        client.options = saved
+
+    payload = getattr(client, "_last_metrics", None) or {}
+    choices = payload.get("choices") or [{}]
+    usage = payload.get("usage") or {}
+    return {
+        "completion": completion,
+        "finish_reason": choices[0].get("finish_reason"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "seconds": time.perf_counter() - started,
+        "error": None,
+    }
+
+
 def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
                 label: str = "") -> None:
     """Turn one intent into SQL, run it, and record the training example.
@@ -330,6 +368,9 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
 
     Comparisons are the one shape with no fallback: the question is answered by
     the composer or not at all. _compares_entities has the measurements.
+
+    A model reply cut off at --max-tokens is asked for once more with a
+    frequency penalty; model_retry explains why only that case gets a retry.
 
     Shared by full_run and step2_train so a training record always holds the
     prompt the pipeline really sends - a record built from some other prompt is
@@ -351,7 +392,15 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     completion, sql, source = None, gold, "composer"
 
     if gold is None or args.sql in ("model", "both"):
-        completion = run_stage(get_client(), "stage2", prompt2)
+        reply = with_cutoff_retry(
+            lambda penalty: _ask_stage2(get_client, prompt2, penalty),
+            retry_penalty=args.retry_penalty, label=label, log=logger)
+        completion = reply["completion"]
+        if was_cut_off(reply):
+            #said plainly, because the SQL below will fail to parse and the
+            #reason is worth knowing: the model never finished, it was stopped
+            logger.warning("%sstage 2 hit the %d token cap - reply cut off",
+                           label, args.max_tokens)
         if gold is None:
             sql, source = _strip_sql_fence(completion), "model"
 
@@ -461,6 +510,10 @@ def main() -> None:
                         "in seconds instead of generating until the context is full. 1024 is well "
                         "clear of anything legitimate: the longest correct stage-2 answer measured "
                         "is 678 tokens")
+    parser.add_argument("--retry-penalty", type=float, default=DEFAULT_RETRY_PENALTY,
+                        help="frequency penalty for a second attempt, made only when a reply was "
+                        "cut off at --max-tokens. Set to 0 to switch the retry off and keep "
+                        "whatever the first attempt produced")
     parser.add_argument("--request-timeout", type=float, default=300.0,
                         help="seconds to wait for one model reply, over OllamaClient's own 60s "
                         "default - the tuned model takes longer than that on real prompts")

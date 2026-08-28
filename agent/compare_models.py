@@ -59,6 +59,10 @@ import requests
 AGENT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(AGENT_DIR))
 
+# Shared with sentence_to_sql.py, which needs the same second attempt for the
+# same reason - the policy and its evidence live in one place rather than two.
+from model_retry import with_cutoff_retry  # noqa: E402 - after sys.path fixup
+
 # The pipeline's own helpers, so a prompt built here is the prompt production
 # sends - rebuilding it separately is how the training log ended up holding
 # prompts the pipeline never sent. Pulls in OllamaClient through
@@ -427,53 +431,6 @@ def attach_gold(cases: list, limit: int) -> None:
             logger.info("no reference SQL for %s: %s", case["case"], reason)
 
 
-def _should_retry(answer: dict, args: argparse.Namespace) -> bool:
-    """A cut-off reply is worth one more try; a wrong one is not.
-
-    Only "length" qualifies. A reply that stopped on its own is the model's
-    real answer even when the SQL is bad, and re-rolling it would be shopping
-    for a better score rather than measuring one."""
-    return (answer.get("finish_reason") == "length"
-            and args.retry_penalty > args.frequency_penalty)
-
-
-def _retry_penalised(endpoint: Endpoint, case: dict, args: argparse.Namespace,
-                     first: dict) -> dict:
-    """Ask again with a frequency penalty, and keep the second answer.
-
-    The cut-offs are a repetition loop: the model starts a plausible query and
-    then enumerates 'P44', 'P45', 'P46' until the cap. A penalty breaks the
-    loop - measured over all 144 cases it turned 28 cut-offs into 2 - but it is
-    the wrong default, because it also steers the model off the idioms tuning
-    taught it. Over that same run it swapped a working person filter for an
-    invented narrower one and lost 7 cases that greedy got right, for 7 gained:
-    a wash. Applied only where greedy ran away it is 43 right out of 138 rather
-    than 47, and nothing is put at risk, since none of the 7 casualties were
-    cut off.
-
-    Offered to both endpoints, so the columns stay comparable. Only the tuned
-    model has ever needed it.
-
-    seconds and completion_tokens are the total for the case, both calls, so
-    the cost of retrying shows up in the summary instead of hiding. Everything
-    else describes the answer that was kept."""
-    logger.info("[%s] %s was cut off - retrying at frequency_penalty %.2f",
-                case["case"], endpoint.key, args.retry_penalty)
-    second = ask(endpoint, case["prompt"], args, frequency_penalty=args.retry_penalty)
-    #the discarded reply itself is not kept - 1024 tokens of cycling ids says
-    #nothing a token count does not
-    second["first_try"] = {k: first.get(k) for k in
-                           ("seconds", "completion_tokens", "finish_reason", "error")}
-    second["retried_at_penalty"] = args.retry_penalty
-    for field in ("seconds", "completion_tokens"):
-        if first.get(field) is not None and second.get(field) is not None:
-            second[field] += first[field]
-    if second.get("finish_reason") == "length":
-        logger.warning("[%s] %s ran away at frequency_penalty %.2f too",
-                       case["case"], endpoint.key, args.retry_penalty)
-    return second
-
-
 def run_case(case: dict, endpoints: list, db, args: argparse.Namespace) -> dict:
     """One prompt through both servers and both answers through the database."""
     gold_result = db.run(case["gold_sql"]) if db and case["gold_sql"] else None
@@ -493,9 +450,12 @@ def run_case(case: dict, endpoints: list, db, args: argparse.Namespace) -> dict:
     }
 
     for endpoint in endpoints:
-        answer = ask(endpoint, case["prompt"], args)
-        if _should_retry(answer, args):
-            answer = _retry_penalised(endpoint, case, args, answer)
+        #offered to both endpoints, so the columns stay comparable. Only the
+        #tuned model has ever needed it.
+        answer = with_cutoff_retry(
+            lambda penalty: ask(endpoint, case["prompt"], args, frequency_penalty=penalty),
+            base_penalty=args.frequency_penalty, retry_penalty=args.retry_penalty,
+            label=f"[{case['case']}] {endpoint.key} ", log=logger)
         db_result = db.run(answer["sql"]) if db and answer["sql"] else None
         answer["verdict"] = verdict(db_result, gold_result) if db else "not_run"
         answer["db_status"] = db_result["status"] if db_result else "not run"
