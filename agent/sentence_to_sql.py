@@ -212,6 +212,28 @@ def compose_sql(intent: str, limit: int):
         return None, f"intent shape not covered ({e})"
 
 
+def _compares_entities(intent: str) -> bool:
+    """Whether the intent is a two-or-more-entity comparison.
+
+    These get no fallback to the model. A comparison is a different shape from
+    everything else here - two CTEs holding one entity each, and one row of
+    facts about both - and the model does not hold it: over the 27 comparison
+    cases its SQL failed to run 12 times, ten of those by reading a column off
+    a CTE that never projected it (e1.qid, where e1 selects name, born, died).
+    Seven of the ten were cases it had been fine-tuned on. It reaches for the
+    list-query template that fits most of its training data, where i.qid is
+    always in scope, and on this shape that template does not bind.
+
+    The composer expresses every comparison it is offered except three or more
+    entities, so the fallback only ever fires on the shape the model is worst
+    at, and a wrong comparison that runs is harder to catch than none."""
+    try:
+        filters = (json.loads(intent) or {}).get("filters") or {}
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    return bool(filters.get("compare_entities"))
+
+
 def log_training_example(
     path: str, model: str, prompt: str, completion: str, sql: str, db_result: dict,
     gold_sql: str = None, sql_source: str = "model"
@@ -276,7 +298,7 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
 
     What --sql selects:
         composer  compose from the intent; ask the model only for the shapes
-                  the composer refuses
+                  the composer refuses, and not even then for a comparison
         model     ask the model, and nothing else
         both      compose and ask, run each, and record the composed query as
                   the training target beside the model's attempt
@@ -285,6 +307,9 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     missing, while the model has repeatedly returned SQL that ran, looked
     plausible and answered a different question.
 
+    Comparisons are the one shape with no fallback: the question is answered by
+    the composer or not at all. _compares_entities has the measurements.
+
     Shared by full_run and step2_train so a training record always holds the
     prompt the pipeline really sends - a record built from some other prompt is
     worse than no record, since fine-tuning on it teaches the wrong input.
@@ -292,6 +317,13 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     gold, reason = (None, "not requested")
     if args.sql in ("composer", "both"):
         gold, reason = compose_sql(intent, args.limit)
+        if gold is None and args.sql == "composer" and _compares_entities(intent):
+            #no SQL at all rather than the model's: see _compares_entities.
+            #Only in "composer" mode - "model" and "both" are asked for on
+            #purpose, and both exist to see what the model does with a prompt.
+            logger.warning("%scomposer declined a comparison, and the model is not "
+                           "asked for these: %s", label, reason)
+            return
         if gold is None:
             logger.info("%scomposer declined, using the model: %s", label, reason)
 
@@ -389,9 +421,10 @@ def main() -> None:
         choices=("composer", "model", "both"),
         default="composer",
         help="where the SQL comes from: 'composer' builds it from the intent in "
-        "intent_to_sql.py and only asks the model for shapes it cannot express; "
-        "'model' is the original stage-2 prompt; 'both' runs each and records the "
-        "composed query as the training target next to the model's attempt",
+        "intent_to_sql.py and only asks the model for shapes it cannot express - "
+        "except a comparison of named entities, which the composer answers or "
+        "nobody does; 'model' is the original stage-2 prompt; 'both' runs each and "
+        "records the composed query as the training target next to the model's attempt",
     )
     parser.add_argument(
         "--limit",
