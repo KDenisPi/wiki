@@ -108,6 +108,17 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
   either, both, or neither. Where the seven tags cannot say what kind of thing is wanted - "wars",
   "festivals", "elections" are all just "event" - subject is what carries it, so fill it in
   whenever the sentence names a kind, even when domain already has a value.
+  subject never stands in for another filter. "List of all Beethoven symphonies" names a kind AND
+  a creator: subject "symphony" AND related_entity {"relation": "creates", "entity_mention":
+  "Beethoven"}. Filling in subject and leaving related_entity null answers "which symphonies",
+  losing Beethoven entirely - and the same goes for location and time. Every filter the sentence
+  supports is filled in, independently of the others.
+  A creator can modify the kind directly, with no verb between them - "Beethoven symphonies",
+  "Mozart operas", "Tolstoy novels" all mean works of that kind BY that person, and both filters
+  are filled exactly as if the sentence had said "symphonies that Beethoven wrote".
+  A word that names no particular kind is not a subject: "works", "things", "stuff", "output" are
+  what any target already is, so subject stays null for "List of all Beethoven works" - the creator
+  filter alone answers it.
 - filters.time_constraint:
     - person -> birth_year / death_year
     - event -> start_year / end_year
@@ -375,6 +386,44 @@ Sentence: Which physicists were active in the 1900s?
       "event": "alive"
     },
     "related_entity": null,
+    "compare_entities": null
+  }
+}
+
+Sentence: What symphonies did Beethoven compose?
+{
+  "target_type": "work",
+  "answer_field": null,
+  "filters": {
+    "name": null,
+    "occupation": null,
+    "subject": "symphony",
+    "location": null,
+    "domain": "music",
+    "time_constraint": null,
+    "related_entity": {
+      "relation": "creates",
+      "entity_mention": "Beethoven"
+    },
+    "compare_entities": null
+  }
+}
+
+Sentence: List of all Mozart operas
+{
+  "target_type": "work",
+  "answer_field": null,
+  "filters": {
+    "name": null,
+    "occupation": null,
+    "subject": "opera",
+    "location": null,
+    "domain": "music",
+    "time_constraint": null,
+    "related_entity": {
+      "relation": "creates",
+      "entity_mention": "Mozart"
+    },
     "compare_entities": null
   }
 }
