@@ -6,6 +6,7 @@
     "filters": {
       "name": "theory of relativity",
       "occupation": null,
+      "subject": null,
       "location": null,
       "domain": "science",
       "time_constraint": null,

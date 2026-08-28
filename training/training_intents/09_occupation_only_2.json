@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": "physicist",
+      "subject": null,
       "location": null,
       "domain": "science",
       "time_constraint": null,

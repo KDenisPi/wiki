@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": "soldier",
+      "subject": null,
       "location": "Germany",
       "domain": null,
       "time_constraint": null,

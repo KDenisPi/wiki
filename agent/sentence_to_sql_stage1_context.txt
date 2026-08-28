@@ -174,6 +174,7 @@ Sentence: Which science inventions in physics were created in the 19th century?
   "filters": {
     "name": null,
     "occupation": null,
+    "subject": null,
     "location": null,
     "domain": "science",
     "time_constraint": {"type": "in_range", "start_year": 1801, "end_year": 1900, "precision": "century"},
@@ -189,6 +190,7 @@ Sentence: Which French composers were active before Beethoven?
   "filters": {
     "name": null,
     "occupation": "composer",
+    "subject": null,
     "location": "France",
     "domain": "music",
     "time_constraint": {"type": "relative_to_entity", "relation": "before", "entity_mention": "Beethoven"},
@@ -204,9 +206,15 @@ Sentence: What wars happened in Europe during the 1940s?
   "filters": {
     "name": null,
     "occupation": null,
+    "subject": "war",
     "location": "Europe",
     "domain": "event",
-    "time_constraint": {"type": "in_range", "start_year": 1940, "end_year": 1949, "precision": "decade"},
+    "time_constraint": {
+      "type": "in_range",
+      "start_year": 1940,
+      "end_year": 1949,
+      "precision": "decade"
+    },
     "related_entity": null,
     "compare_entities": null
   }
@@ -219,6 +227,7 @@ Sentence: Composers who have Symphony number 5
   "filters": {
     "name": null,
     "occupation": "composer",
+    "subject": null,
     "location": null,
     "domain": "music",
     "time_constraint": null,
@@ -234,10 +243,14 @@ Sentence: When did Beethoven write Symphony 5?
   "filters": {
     "name": "Symphony 5",
     "occupation": null,
+    "subject": "symphony",
     "location": null,
     "domain": "music",
     "time_constraint": null,
-    "related_entity": {"relation": "creates", "entity_mention": "Beethoven"},
+    "related_entity": {
+      "relation": "creates",
+      "entity_mention": "Beethoven"
+    },
     "compare_entities": null
   }
 }
@@ -249,6 +262,7 @@ Sentence: Where was Albert Einstein born?
   "filters": {
     "name": "Albert Einstein",
     "occupation": null,
+    "subject": null,
     "location": null,
     "domain": null,
     "time_constraint": null,
@@ -264,6 +278,7 @@ Sentence: Did composers Beethowen and Mahler live on the same time?
   "filters": {
     "name": null,
     "occupation": "composer",
+    "subject": null,
     "location": null,
     "domain": "music",
     "time_constraint": null,
@@ -279,6 +294,7 @@ Sentence: Who composed more symphonies, Beethowen or Mahler?
   "filters": {
     "name": null,
     "occupation": "composer",
+    "subject": null,
     "location": null,
     "domain": "music",
     "time_constraint": null,
@@ -294,6 +310,7 @@ Sentence: Who lived longer, Beethoven or Mahler?
   "filters": {
     "name": null,
     "occupation": null,
+    "subject": null,
     "location": null,
     "domain": null,
     "time_constraint": null,
@@ -309,11 +326,56 @@ Sentence: Were Beethoven and Mahler born in the same country?
   "filters": {
     "name": null,
     "occupation": null,
+    "subject": null,
     "location": null,
     "domain": null,
     "time_constraint": null,
     "related_entity": null,
     "compare_entities": {"entities": ["Beethoven", "Mahler"], "aspect": "location", "relation": "same"}
+  }
+}
+
+Sentence: Who was born in 1920?
+{
+  "target_type": "person",
+  "answer_field": null,
+  "filters": {
+    "name": null,
+    "occupation": null,
+    "subject": null,
+    "location": null,
+    "domain": null,
+    "time_constraint": {
+      "type": "in_range",
+      "start_year": 1920,
+      "end_year": 1920,
+      "precision": "year",
+      "event": "born"
+    },
+    "related_entity": null,
+    "compare_entities": null
+  }
+}
+
+Sentence: Which physicists were active in the 1900s?
+{
+  "target_type": "person",
+  "answer_field": null,
+  "filters": {
+    "name": null,
+    "occupation": "physicist",
+    "subject": null,
+    "location": null,
+    "domain": "science",
+    "time_constraint": {
+      "type": "in_range",
+      "start_year": 1900,
+      "end_year": 1909,
+      "precision": "decade",
+      "event": "alive"
+    },
+    "related_entity": null,
+    "compare_entities": null
   }
 }
 

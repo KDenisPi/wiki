@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": "architect",
+      "subject": null,
       "location": null,
       "domain": null,
       "time_constraint": null,

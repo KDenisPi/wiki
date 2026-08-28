@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": "composer",
+      "subject": null,
       "location": "Russia",
       "domain": "music",
       "time_constraint": {

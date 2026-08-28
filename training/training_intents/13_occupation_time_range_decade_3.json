@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": "painter",
+      "subject": null,
       "location": null,
       "domain": "art",
       "time_constraint": {

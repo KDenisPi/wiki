@@ -6,6 +6,7 @@
     "filters": {
       "name": "Mona Lisa",
       "occupation": null,
+      "subject": null,
       "location": null,
       "domain": "art",
       "time_constraint": null,

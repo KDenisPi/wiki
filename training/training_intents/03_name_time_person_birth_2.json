@@ -6,6 +6,7 @@
     "filters": {
       "name": "Marie Curie",
       "occupation": null,
+      "subject": null,
       "location": null,
       "domain": null,
       "time_constraint": null,

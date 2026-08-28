@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": "diplomat",
+      "subject": null,
       "location": null,
       "domain": null,
       "time_constraint": null,
