@@ -218,7 +218,11 @@ def run_sql(db_path: str, sql: str) -> dict:
 
     started = time.perf_counter()
     try:
-        connection = duckdb.connect(db_path)
+        #read-only because this only ever SELECTs, and a read-write handle takes
+        #an exclusive lock on the file - one pipeline run would otherwise fail
+        #the moment a DuckDB CLI, compare_models.py or eval_stage1.py had the
+        #same database open, and block them in turn
+        connection = duckdb.connect(db_path, read_only=True)
         try:
             rows = connection.execute(sql).fetchall()
             columns = [d[0] for d in connection.description]
