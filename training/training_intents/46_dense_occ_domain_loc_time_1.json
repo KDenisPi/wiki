@@ -12,7 +12,8 @@
         "type": "in_range",
         "start_year": 1930,
         "end_year": 1939,
-        "precision": "decade"
+        "precision": "decade",
+        "event": "alive"
       },
       "related_entity": null,
       "compare_entities": null

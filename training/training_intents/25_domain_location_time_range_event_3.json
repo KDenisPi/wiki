@@ -7,7 +7,7 @@
       "name": null,
       "occupation": null,
       "location": "France",
-      "domain": "election",
+      "domain": "event",
       "time_constraint": {
         "type": "in_range",
         "start_year": 1801,

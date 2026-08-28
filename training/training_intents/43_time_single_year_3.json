@@ -12,7 +12,8 @@
         "type": "in_range",
         "start_year": 1920,
         "end_year": 1920,
-        "precision": "year"
+        "precision": "year",
+        "event": "born"
       },
       "related_entity": null,
       "compare_entities": null

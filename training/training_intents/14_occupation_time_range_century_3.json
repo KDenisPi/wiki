@@ -12,7 +12,8 @@
         "type": "in_range",
         "start_year": 1601,
         "end_year": 1700,
-        "precision": "century"
+        "precision": "century",
+        "event": "alive"
       },
       "related_entity": null,
       "compare_entities": null

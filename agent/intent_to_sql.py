@@ -31,7 +31,7 @@ back to the model rather than get a confidently wrong query.
     ...                                           "entity_mention": "Isaac Newton"}}})
 
 Self-check (builds SQL for a set of intents and runs each one):
-    python intent_to_sql.py --db /home/denis/projects/wiki_data/run2/wiki.duckdb
+    python intent_to_sql.py --db /home/denis/projects/wiki_data/run3/wiki.duckdb
 """
 
 import json
@@ -302,10 +302,25 @@ def _time_conditions(target: str, constraint: dict, ctes: list) -> list:
         if start is None or end is None:
             raise Unsupported("in_range without both years")
         if target == "person":
-            #"lived in the 1400s" is read as born or died inside the window,
-            #which also keeps people whose other date is unknown.
+            #Which date the window applies to. "Who was born in 1920" and "which
+            #composers were active in 1920" are different questions and were
+            #answered the same way until this field existed - the second answer,
+            #which returns anyone whose life touched the window and so is wrong
+            #for the first by everyone who merely died in it.
+            event = constraint.get("event") or "alive"
+            if event == "born":
+                properties = [BIRTH]
+            elif event == "died":
+                properties = [DEATH]
+            elif event == "alive":
+                #either date inside the window, which also keeps people whose
+                #other date is unknown
+                properties = [BIRTH, DEATH]
+            else:
+                raise Unsupported(f"in_range event {event!r}")
+            listed = ", ".join(_lit(p) for p in properties)
             return [f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
-                    f" AND e.property IN ({_lit(BIRTH)}, {_lit(DEATH)})"
+                    f" AND e.property IN ({listed})"
                     f" AND e.year BETWEEN {int(start)} AND {int(end)})"]
         return [f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
                 f" AND e.year BETWEEN {int(start)} AND {int(end)})"]
@@ -604,7 +619,7 @@ def _self_check(db_path: str) -> int:
 
 
 if __name__ == "__main__":
-    db = "/home/denis/projects/wiki_data/run2/wiki.duckdb"
+    db = "/home/denis/projects/wiki_data/run3/wiki.duckdb"
     args = sys.argv[1:]
     if args and args[0] == "--db":
         db = args[1]

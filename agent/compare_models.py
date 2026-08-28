@@ -106,7 +106,8 @@ def discover_model(url: str) -> str:
     return models[0]["id"]
 
 
-def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace) -> dict:
+def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace,
+        frequency_penalty: float = None) -> dict:
     """Send one prompt, return the reply with the SQL pulled out of it.
 
     A server that is down or slow must not end a run of a hundred cases, so a
@@ -118,7 +119,13 @@ def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace) -> dict:
     prompts - it starts a plausible query and then enumerates 'P44', 'P45',
     'P46' ... forever. Uncapped that is 27k tokens, fifteen minutes, and a
     verdict of "the server timed out" for what is really "the model did not
-    stop". Capped it is twenty seconds and a truncated reply that says so."""
+    stop". Capped it is twenty seconds and a truncated reply that says so.
+
+    The same value goes to both endpoints, frequency_penalty included, so a
+    difference between the two columns stays a difference between the models.
+    frequency_penalty overrides args for the one case run_case retries."""
+    if frequency_penalty is None:
+        frequency_penalty = args.frequency_penalty
     body = {
         "model": endpoint.model,
         "messages": [{"role": "user", "content": prompt}],
@@ -126,6 +133,7 @@ def ask(endpoint: Endpoint, prompt: str, args: argparse.Namespace) -> dict:
         "seed": args.seed,
         "stream": False,
         "max_tokens": args.max_tokens,
+        "frequency_penalty": frequency_penalty,
     }
     started = time.perf_counter()
     try:
@@ -333,6 +341,14 @@ def _record_prompt(record: dict):
                  if isinstance(m, dict) and m.get("role") == "user"]
         if users and isinstance(users[-1], str):
             return users[-1]
+    #ShareGPT, which is what the tuning script actually wrote: a "conversations"
+    #list of {"from": "human"/"gpt", "value": ...} rather than role/content
+    conversations = record.get("conversations")
+    if isinstance(conversations, list):
+        humans = [m.get("value") for m in conversations
+                  if isinstance(m, dict) and m.get("from") in ("human", "user")]
+        if humans and isinstance(humans[-1], str):
+            return humans[-1]
     for field in ("input", "text", "instruction", "question"):
         if isinstance(record.get(field), str):
             return record[field]
@@ -411,6 +427,53 @@ def attach_gold(cases: list, limit: int) -> None:
             logger.info("no reference SQL for %s: %s", case["case"], reason)
 
 
+def _should_retry(answer: dict, args: argparse.Namespace) -> bool:
+    """A cut-off reply is worth one more try; a wrong one is not.
+
+    Only "length" qualifies. A reply that stopped on its own is the model's
+    real answer even when the SQL is bad, and re-rolling it would be shopping
+    for a better score rather than measuring one."""
+    return (answer.get("finish_reason") == "length"
+            and args.retry_penalty > args.frequency_penalty)
+
+
+def _retry_penalised(endpoint: Endpoint, case: dict, args: argparse.Namespace,
+                     first: dict) -> dict:
+    """Ask again with a frequency penalty, and keep the second answer.
+
+    The cut-offs are a repetition loop: the model starts a plausible query and
+    then enumerates 'P44', 'P45', 'P46' until the cap. A penalty breaks the
+    loop - measured over all 144 cases it turned 28 cut-offs into 2 - but it is
+    the wrong default, because it also steers the model off the idioms tuning
+    taught it. Over that same run it swapped a working person filter for an
+    invented narrower one and lost 7 cases that greedy got right, for 7 gained:
+    a wash. Applied only where greedy ran away it is 43 right out of 138 rather
+    than 47, and nothing is put at risk, since none of the 7 casualties were
+    cut off.
+
+    Offered to both endpoints, so the columns stay comparable. Only the tuned
+    model has ever needed it.
+
+    seconds and completion_tokens are the total for the case, both calls, so
+    the cost of retrying shows up in the summary instead of hiding. Everything
+    else describes the answer that was kept."""
+    logger.info("[%s] %s was cut off - retrying at frequency_penalty %.2f",
+                case["case"], endpoint.key, args.retry_penalty)
+    second = ask(endpoint, case["prompt"], args, frequency_penalty=args.retry_penalty)
+    #the discarded reply itself is not kept - 1024 tokens of cycling ids says
+    #nothing a token count does not
+    second["first_try"] = {k: first.get(k) for k in
+                           ("seconds", "completion_tokens", "finish_reason", "error")}
+    second["retried_at_penalty"] = args.retry_penalty
+    for field in ("seconds", "completion_tokens"):
+        if first.get(field) is not None and second.get(field) is not None:
+            second[field] += first[field]
+    if second.get("finish_reason") == "length":
+        logger.warning("[%s] %s ran away at frequency_penalty %.2f too",
+                       case["case"], endpoint.key, args.retry_penalty)
+    return second
+
+
 def run_case(case: dict, endpoints: list, db, args: argparse.Namespace) -> dict:
     """One prompt through both servers and both answers through the database."""
     gold_result = db.run(case["gold_sql"]) if db and case["gold_sql"] else None
@@ -431,6 +494,8 @@ def run_case(case: dict, endpoints: list, db, args: argparse.Namespace) -> dict:
 
     for endpoint in endpoints:
         answer = ask(endpoint, case["prompt"], args)
+        if _should_retry(answer, args):
+            answer = _retry_penalised(endpoint, case, args, answer)
         db_result = db.run(answer["sql"]) if db and answer["sql"] else None
         answer["verdict"] = verdict(db_result, gold_result) if db else "not_run"
         answer["db_status"] = db_result["status"] if db_result else "not run"
@@ -492,6 +557,10 @@ def summarize(details: list, endpoints: list) -> dict:
             "sql_ran": sum(1 for a in answers if a["db_status"] == "ok"),
             "sql_failed": sum(1 for a in answers if a["db_status"] in ("failed", "timeout")),
             "returned_rows": sum(1 for a in answers if (a["row_count"] or 0) > 0),
+            #cut_off counts the answer that was kept, so a retry that worked is
+            #not counted here - retried is what says how often one was needed
+            "cut_off": sum(1 for a in answers if a.get("finish_reason") == "length"),
+            "retried": sum(1 for a in answers if a.get("first_try")),
             "verdicts": {v: counts.get(v, 0) for v in VERDICTS},
             "right": sum(counts.get(v, 0) for v in RIGHT),
             "scored": sum(counts.get(v, 0) for v in VERDICTS if v not in UNSCORED),
@@ -543,6 +612,8 @@ def print_summary(summary: dict, endpoints: list, title: str = "all cases") -> N
     row("SQL ran", [per[k]["sql_ran"] for k in keys])
     row("SQL failed", [per[k]["sql_failed"] for k in keys])
     row("returned rows", [per[k]["returned_rows"] for k in keys])
+    row("retried after cut-off", [per[k].get("retried", 0) for k in keys])
+    row("still cut off", [per[k].get("cut_off", 0) for k in keys])
     print("  " + "-" * (24 + width * len(keys)))
     for name in VERDICTS:
         row(f"verdict {name}", [per[k]["verdicts"][name] for k in keys])
@@ -641,6 +712,19 @@ def main() -> None:
                         "been enough to make runs repeatable here")
     parser.add_argument("--request-timeout", type=float, default=600.0,
                         help="seconds to wait for one model reply")
+    parser.add_argument("--frequency-penalty", type=float, default=0.0,
+                        help="penalise tokens by how often they have already been used, on every "
+                        "request. 0 is greedy, which is the honest control for measuring what "
+                        "tuning taught, and the right setting: a whole run at 0.3 scored 43 of "
+                        "138, exactly what greedy scored, gaining 7 cases and losing 7. It ends "
+                        "the repetition loops (28 cut-offs down to 2) but also pushes the model "
+                        "off the idioms it was tuned on, into inventing narrower filters that "
+                        "match nothing. --retry-penalty gets the first half without the second")
+    parser.add_argument("--retry-penalty", type=float, default=0.3,
+                        help="frequency penalty for a second attempt, made only when a reply was "
+                        "cut off at the token cap. Worth 4 cases over the same run (43 -> 47) at "
+                        "no risk, since a cut-off reply was unusable anyway. Set below "
+                        "--frequency-penalty to switch the retry off")
     parser.add_argument("--max-tokens", type=int, default=1024,
                         help="cap on the reply, so a model that never emits end-of-text is cut "
                         "off in seconds instead of generating until the context is full. 1024 is "
@@ -654,7 +738,7 @@ def main() -> None:
                         help="SQL examples pasted into the prompt (folder cases only)")
     parser.add_argument("--limit", type=int, default=200,
                         help="row limit the composer puts on the reference query")
-    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run2/wiki.duckdb",
+    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run3/wiki.duckdb",
                         help="DuckDB file to execute every query against, opened read-only")
     parser.add_argument("--no-db", action="store_true",
                         help="skip execution entirely - collects and diffs the SQL only, "
@@ -740,7 +824,11 @@ def main() -> None:
     logger.info("%d case(s) in %.0fs", len(details), time.perf_counter() - started)
     emit(details, endpoints, out_path.with_suffix(".summary.json"),
          {"cases_file": str(args.cases), "db": None if db is None else args.db,
-          "detail_file": str(out_path), "splits": args.splits})
+          "detail_file": str(out_path), "splits": args.splits,
+          #kept with the scores because they change them: two summary files are
+          #only comparable when these match
+          "temperature": args.temperature, "frequency_penalty": args.frequency_penalty,
+          "retry_penalty": args.retry_penalty, "max_tokens": args.max_tokens})
 
 
 if __name__ == "__main__":

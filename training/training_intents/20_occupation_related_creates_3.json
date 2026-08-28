@@ -7,7 +7,7 @@
       "name": null,
       "occupation": "architect",
       "location": null,
-      "domain": "architecture",
+      "domain": null,
       "time_constraint": null,
       "related_entity": {
         "relation": "creates",
