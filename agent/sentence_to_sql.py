@@ -250,6 +250,24 @@ def compose_sql(intent: str, limit: int):
         return None, f"intent shape not covered ({e})"
 
 
+def _parsed_intent(intent: str):
+    """The intent as an object, or None when stage 1 did not produce one.
+
+    Distinguishes the two ways compose_sql declines. "intent shape not
+    covered" means stage 1 worked and the composer cannot express what it
+    said - the model can still read that intent and try. "stage 1 did not
+    return JSON" means there is no intent at all, and the stage-2 prompt then
+    carries an empty Request. Asked that, the model answers from the shape of
+    its training data instead: for "List of all Beethoven symphonies" it
+    returned a query for a person named John Doe, which ran, returned 29
+    people, and looked like an answer."""
+    try:
+        parsed = json.loads(intent)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _compares_entities(intent: str) -> bool:
     """Whether the intent is a two-or-more-entity comparison.
 
@@ -326,8 +344,14 @@ def full_run(args: argparse.Namespace) -> None:
     #as a hung server rather than as a model that never finished.
     options = {"temperature": args.temperature, "seed": args.seed,
                "max_tokens": args.max_tokens}
+    #Stage 1 gets its own, far larger cap. A reasoning model spends the budget
+    #thinking before it writes anything, and those tokens count: qwen3.6 on
+    #this prompt produced 3904 characters of reasoning and an EMPTY answer at
+    #1024, and a correct intent at 4096. An empty stage-1 reply is worse than a
+    #slow one - it looks like a model that cannot read the sentence.
+    options1 = {**options, "max_tokens": args.max_tokens1}
     prompt1 = _fill(context1, sentence=args.sentence)
-    client1 = OllamaClient(args.url, args.model1, options=options,
+    client1 = OllamaClient(args.url, args.model1, options=options1,
                            timeout=args.request_timeout)
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
     logger.info("stage1 intent (extracted):\n%s", intent)
@@ -403,6 +427,12 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
             #purpose, and both exist to see what the model does with a prompt.
             logger.warning("%scomposer declined a comparison, and the model is not "
                            "asked for these: %s", label, reason)
+            return
+        if gold is None and _parsed_intent(intent) is None:
+            #not a fallback case: there is no intent to hand on. See
+            #_parsed_intent for what the model does when asked anyway.
+            logger.error("%sstage 1 produced no intent, so stage 2 is not asked: %s",
+                         label, reason)
             return
         if gold is None:
             logger.info("%scomposer declined, using the model: %s", label, reason)
@@ -561,6 +591,11 @@ def main() -> None:
                         "model is served by llama-server rather than Ollama. Both speak the same "
                         "OpenAI /v1/chat/completions API, so only the address and the naming "
                         "differ. Pass the same value as --url to put both stages back on one server")
+    parser.add_argument("--max-tokens1", type=int, default=4096,
+                        help="cap on a stage-1 reply. Far above --max-tokens because a reasoning "
+                        "model spends the budget thinking first and those tokens count: qwen3.6 "
+                        "on a stage-1 prompt wrote 3904 characters of reasoning and an empty "
+                        "answer at 1024, and a correct intent at 4096")
     parser.add_argument("--max-tokens", type=int, default=1024,
                         help="cap on a model reply, so one that never emits end-of-text is cut off "
                         "in seconds instead of generating until the context is full. 1024 is well "
