@@ -64,10 +64,20 @@ from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
 logger = logging.getLogger("sentence_to_sql")
 
 EXAMPLES_DIR = Path(__file__).resolve().parent
+#the prompt templates live beside this file, the schema and the example queries
+#one level up with the rest of the project - they describe the database, not
+#this pipeline, and the loaders and the C++ parser read them too
+PROJECT_DIR = EXAMPLES_DIR.parent
 DEFAULT_CONTEXT1 = EXAMPLES_DIR / "sentence_to_sql_stage1_context.txt"
 DEFAULT_CONTEXT2 = EXAMPLES_DIR / "sentence_to_sql_stage2_context.txt"
-DEFAULT_SCHEMA = EXAMPLES_DIR / "db_model.sql"
-DEFAULT_SQL_EXAMPLES = EXAMPLES_DIR / "queries.sql"
+DEFAULT_SCHEMA = PROJECT_DIR / "db_model.sql"
+DEFAULT_SQL_EXAMPLES = PROJECT_DIR / "queries.sql"
+
+#Consecutive step2_train failures that mean the run is not worth continuing.
+#Above one, so a single bad file is skipped rather than fatal; well below a
+#folder, so a server that went away is reported in seconds instead of after
+#144 connection timeouts.
+GIVE_UP_AFTER = 5
 
 
 
@@ -353,7 +363,11 @@ def step2_train(args: argparse.Namespace) -> None:
 
     --sql applies here as it does anywhere else, and --max-files cuts the pass
     short: a full folder is one model call per file, so a mistake in the
-    prompts is cheaper to find over the first few than over all of them."""
+    prompts is cheaper to find over the first few than over all of them.
+
+    A file that fails is skipped, not fatal - a folder is an hour's work and a
+    single timeout should not throw away what came before it. GIVE_UP_AFTER in
+    a row ends the run, because that is the server rather than the files."""
     context2 = Path(args.context2).read_text()
     schema = Path(args.schema).read_text()
     sqlexamples = Path(args.sqlexamples).read_text()
@@ -372,6 +386,7 @@ def step2_train(args: argparse.Namespace) -> None:
     logger.info("step2_train: %d of %d file(s) in %s, sql=%s",
                 len(json_files), found, training_dir, args.sql)
 
+    done = failed = in_a_row = 0
     for json_file in json_files:
         logger.info("step2_train: %s", json_file.name)
         try:
@@ -379,10 +394,30 @@ def step2_train(args: argparse.Namespace) -> None:
         except json.JSONDecodeError as e:
             #one unparseable file must not end a run of a hundred others
             logger.error("skipping %s: not JSON (%s)", json_file.name, e)
+            failed += 1
             continue
 
         prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
-        stage2_once(args, intent, prompt2, get_client, label=f"[{json_file.name}] ")
+        try:
+            stage2_once(args, intent, prompt2, get_client, label=f"[{json_file.name}] ")
+        except Exception as e:
+            #same rule as an unparseable file, now that the model is involved:
+            #one timeout an hour into a folder must not throw away the rest
+            logger.error("skipping %s: %s", json_file.name, e)
+            failed += 1
+            in_a_row += 1
+            if in_a_row >= GIVE_UP_AFTER:
+                #a whole folder failing in a row is the server, not the files,
+                #and grinding through the remainder only delays saying so
+                logger.error("step2_train: %d file(s) in a row failed - stopping "
+                             "with %d of %d done", in_a_row, done, len(json_files))
+                break
+            continue
+        done += 1
+        in_a_row = 0
+
+    logger.info("step2_train: %d done, %d skipped, of %d file(s)",
+                done, failed, len(json_files))
 
 
 def main() -> None:
