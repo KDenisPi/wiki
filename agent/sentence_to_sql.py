@@ -44,6 +44,14 @@ Every model call's prompt and reply are logged here; OllamaClient's own
 counts for each call to the same log. Stage 2 (intent -> SQL) additionally
 appends a (prompt, completion, execution outcome) record per run to
 --training-log, meant as raw material for later fine-tuning that model.
+
+After a --training-folder run, --training-log is also turned straight into
+an Unsloth-ready train/eval split (prepare_training_data.py's logic, held
+out by variant and by TRAINVARIANTS.md filter-type category so eval never
+memorizes a paraphrase or misses a whole category) - the same transform
+that used to mean running that script by hand afterward. Written next to
+--training-log as <log>_train.jsonl / <log>_eval.jsonl; pass --no-splits to
+skip it, or --eval-frac/--split-seed to change the held-out share/draw.
 """
 
 import argparse
@@ -77,6 +85,16 @@ DEFAULT_CONTEXT1 = EXAMPLES_DIR / "sentence_to_sql_stage1_context.txt"
 DEFAULT_CONTEXT2 = EXAMPLES_DIR / "sentence_to_sql_stage2_context.txt"
 DEFAULT_SCHEMA = PROJECT_DIR / "db_model.sql"
 DEFAULT_SQL_EXAMPLES = PROJECT_DIR / "queries.sql"
+DEFAULT_INTENTS_DIR = PROJECT_DIR / "training" / "training_intents"
+DEFAULT_TRAINVARIANTS = PROJECT_DIR / "TRAINVARIANTS.md"
+
+# prepare_training_data.py sits at the repo root beside them, so the path has
+# to be on sys.path before it can be imported.
+sys.path.insert(0, str(PROJECT_DIR))
+from prepare_training_data import (  # noqa: E402 - after sys.path fixup
+    convert as convert_training_log,
+    write_jsonl,
+)
 
 #Consecutive step2_train failures that mean the run is not worth continuing.
 #Above one, so a single bad file is skipped rather than fatal; well below a
@@ -415,6 +433,43 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
                              model_sql, model_result, gold_sql=gold, sql_source=source)
 
 
+def _split_output_paths(training_log: str) -> tuple:
+    path = Path(training_log)
+    return (str(path.with_name(f"{path.stem}_train.jsonl")),
+            str(path.with_name(f"{path.stem}_eval.jsonl")))
+
+
+def write_training_splits(args: argparse.Namespace) -> None:
+    """Turn args.training_log straight into the Unsloth-ready train/eval split
+    that used to mean running prepare_training_data.py by hand after every
+    step2_train batch. Safe to call here specifically because every intent in
+    a --training-folder run comes from args.intents_dir, so its Request always
+    matches a variant there - the same is not true of an ad hoc full_run
+    sentence, which is why this is only wired into step2_train.
+
+    A splitting failure must not make an otherwise-successful run look
+    failed - the JSONL log itself is already complete and usable by hand -
+    so any error here is logged and swallowed rather than raised."""
+    if args.no_splits:
+        return
+    train_path, eval_path = _split_output_paths(args.training_log)
+    try:
+        train, ev, dropped, eval_variants = convert_training_log(
+            args.training_log, args.intents_dir, args.trainvariants,
+            args.eval_frac, args.split_seed
+        )
+        write_jsonl(train_path, train)
+        write_jsonl(eval_path, ev)
+    except Exception as e:
+        logger.warning("could not build train/eval splits from %s: %s", args.training_log, e)
+        return
+    logger.info(
+        "train/eval splits: %d train -> %s, %d eval -> %s "
+        "(dropped %d with no gold_sql; eval variants: %s)",
+        len(train), train_path, len(ev), eval_path, dropped, ", ".join(eval_variants),
+    )
+
+
 def step2_train(args: argparse.Namespace) -> None:
     """Run stage 2 (intent -> SQL) alone against the intent JSON files in
     args.training_folder, one by one, logging each to the same JSONL training
@@ -483,6 +538,7 @@ def step2_train(args: argparse.Namespace) -> None:
 
     logger.info("step2_train: %d done, %d skipped, of %d file(s)",
                 done, failed, len(json_files))
+    write_training_splits(args)
 
 
 def main() -> None:
@@ -517,6 +573,35 @@ def main() -> None:
     parser.add_argument("--request-timeout", type=float, default=300.0,
                         help="seconds to wait for one model reply, over OllamaClient's own 60s "
                         "default - the tuned model takes longer than that on real prompts")
+    parser.add_argument(
+        "--intents-dir",
+        default=str(DEFAULT_INTENTS_DIR),
+        help="directory of {sentence, intent} files that names each variant; used, after a "
+        "--training-folder run, to build the Unsloth train/eval split from --training-log",
+    )
+    parser.add_argument(
+        "--trainvariants",
+        default=str(DEFAULT_TRAINVARIANTS),
+        help="doc grouping variants into filter-type categories, for the train/eval split",
+    )
+    parser.add_argument(
+        "--eval-frac",
+        type=float,
+        default=0.15,
+        help="fraction of each filter-type category's variants held out for eval",
+    )
+    parser.add_argument(
+        "--split-seed",
+        type=int,
+        default=0,
+        help="random seed for picking which variants are held out for eval",
+    )
+    parser.add_argument(
+        "--no-splits",
+        action="store_true",
+        help="after a --training-folder run, skip building the *_train.jsonl/*_eval.jsonl "
+        "split beside --training-log",
+    )
     parser.add_argument("--model1", default="llama3.1:8b", help="model for stage 1 (sentence -> intent)")
     parser.add_argument("--model2",
                         default="/home/denis/projects/models/qwen2.5-coder-7b-instruct.Q4_K_M.gguf",

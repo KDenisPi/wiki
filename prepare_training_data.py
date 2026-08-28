@@ -126,8 +126,12 @@ def convert(in_path: str, intents_dir: str, trainvariants_path: str, eval_frac: 
 
     # Group variants by filter-type category so the held-out set is drawn
     # from every category, not just wherever a flat random sample lands.
+    # Iteration order below must not depend on set/dict hash order (which
+    # varies with PYTHONHASHSEED across processes) - otherwise the sequence
+    # of rng.shuffle() calls, and so the result, would silently stop being
+    # pinned by --seed. sorted() everywhere fixes that.
     by_category = {}
-    for variant in {v for v, _ in kept_rows}:
+    for variant in sorted({v for v, _ in kept_rows}):
         bare_slug = variant.split("_", 1)[1]
         category = variant_categories.get(bare_slug)
         if category is None:
@@ -136,7 +140,7 @@ def convert(in_path: str, intents_dir: str, trainvariants_path: str, eval_frac: 
 
     rng = random.Random(seed)
     eval_variants = set()
-    for category, cat_variants in by_category.items():
+    for category, cat_variants in sorted(by_category.items()):
         cat_variants = sorted(cat_variants)
         rng.shuffle(cat_variants)
         n_eval = max(1, round(len(cat_variants) * eval_frac))
