@@ -12,7 +12,8 @@
         "type": "in_range",
         "start_year": 1810,
         "end_year": 1819,
-        "precision": "decade"
+        "precision": "decade",
+        "event": "born"
       },
       "related_entity": null,
       "compare_entities": null

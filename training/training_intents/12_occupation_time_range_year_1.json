@@ -12,7 +12,8 @@
         "type": "in_range",
         "start_year": 1875,
         "end_year": 1875,
-        "precision": "year"
+        "precision": "year",
+        "event": "alive"
       },
       "related_entity": null,
       "compare_entities": null

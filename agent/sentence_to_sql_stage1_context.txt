@@ -24,7 +24,8 @@ Convert the user's question into a structured JSON query intent. Extract:
 - filters.domain: exactly one of "art" | "event" | "literature" | "music" | "person" | "place" |
   "science", or null. No other value is allowed - see the mapping rule below.
 - filters.time_constraint: one of:
-  {"type": "in_range", "start_year": int, "end_year": int, "precision": "year"|"decade"|"century"}
+  {"type": "in_range", "start_year": int, "end_year": int, "precision": "year"|"decade"|"century",
+   "event": "born"|"died"|"alive"}
   {"type": "relative_to_entity", "relation": "overlap"|"before"|"after", "entity_mention": string}
   null
 - filters.related_entity: one of:
@@ -101,6 +102,12 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
     - event -> start_year / end_year
     - work -> creation/publication year
     - type "in_range": absolute year/decade/century window
+    - "event": which date the window applies to, for target_type "person" only. "born" for "who was
+      born in 1920", "died" for "who died in 1920", "alive" for a window the person merely has to
+      have lived through - "active in", "lived in", "worked in". Default to "alive" when the
+      sentence only places someone in a period: it is the wider answer, and "born" wrongly drops
+      everyone already alive when the window opened. Omit the field for work and event targets,
+      which have only one date to speak of.
     - type "relative_to_entity": timeframe defined relative to exactly ONE fixed named entity mentioned
       in the sentence (overlap/before/after), used to find an open-ended set of other entities — e.g.
       "composers before Beethoven" (find all such composers). Not resolved to a date.

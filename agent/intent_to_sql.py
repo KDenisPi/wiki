@@ -302,10 +302,25 @@ def _time_conditions(target: str, constraint: dict, ctes: list) -> list:
         if start is None or end is None:
             raise Unsupported("in_range without both years")
         if target == "person":
-            #"lived in the 1400s" is read as born or died inside the window,
-            #which also keeps people whose other date is unknown.
+            #Which date the window applies to. "Who was born in 1920" and "which
+            #composers were active in 1920" are different questions and were
+            #answered the same way until this field existed - the second answer,
+            #which returns anyone whose life touched the window and so is wrong
+            #for the first by everyone who merely died in it.
+            event = constraint.get("event") or "alive"
+            if event == "born":
+                properties = [BIRTH]
+            elif event == "died":
+                properties = [DEATH]
+            elif event == "alive":
+                #either date inside the window, which also keeps people whose
+                #other date is unknown
+                properties = [BIRTH, DEATH]
+            else:
+                raise Unsupported(f"in_range event {event!r}")
+            listed = ", ".join(_lit(p) for p in properties)
             return [f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
-                    f" AND e.property IN ({_lit(BIRTH)}, {_lit(DEATH)})"
+                    f" AND e.property IN ({listed})"
                     f" AND e.year BETWEEN {int(start)} AND {int(end)})"]
         return [f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
                 f" AND e.year BETWEEN {int(start)} AND {int(end)})"]
