@@ -70,6 +70,9 @@ ANSWER_PLACE_PROPS = {
 I_LABEL = 'i."label"'
 V_LABEL = 'v."label"'
 W_LABEL = 'w."label"'
+C_LABEL = 'c."label"'
+#same reason: "class" is quoted, and the quotes cannot go inside an f-string
+CLASS_COL = '"class"'
 
 OCCUPATION_PROP = "P106"
 
@@ -164,6 +167,28 @@ def _attribute_exists(props, match: str) -> str:
             f" JOIN value_items v ON v.qid = a.\"value\""
             f" WHERE a.qid = i.qid AND a.property IN ({plist})"
             f" AND {match})")
+
+
+def _subject_exists(value: str) -> str:
+    """The kind of thing an item is, matched two ways because the data splits
+    them and neither half is the general answer.
+
+    One is what the item is ABOUT - main subject, field of work, genre - which
+    is where a symphony's kind lives: 692 items carry it there and none carry
+    it as a class. The other is what the item IS, its class, which is where a
+    battle's kind lives: 14,824 as a class against 713 as a subject. Elections
+    and festivals go the same way as battles, paintings and novels the same way
+    as symphonies. Requiring both would answer none of them.
+
+    classes.domains stays the coarse filter of seven tags; this is the specific
+    one beside it, so "musical works by Beethoven" can become "symphonies by
+    Beethoven"."""
+    by_subject = _attribute_exists(SUBJECT_PROPS, _word_match(V_LABEL, value))
+    class_match = _word_match(C_LABEL, value)
+    by_class = (f"EXISTS (SELECT 1 FROM item_classes l"
+                f" JOIN classes c ON c.qid = l.{CLASS_COL}"
+                f" WHERE l.qid = i.qid AND {class_match})")
+    return f"({by_subject}\n       OR {by_class})"
 
 
 def _year_expr(prop: str = None) -> str:
@@ -461,10 +486,9 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             dropped.append(f"domain {domain!r} is not one of {', '.join(DOMAINS)}")
 
     if filters.get("subject"):
-        #what the item is about, which lives in attributes - classes.domains
-        #records what it IS (Newton's books are all tagged literature)
-        where.append(_attribute_exists(SUBJECT_PROPS,
-                                       _word_match(V_LABEL, filters['subject'])))
+        #the specific kind of thing asked for - "symphonies" rather than
+        #"musical works". See _subject_exists for why it is matched two ways.
+        where.append(_subject_exists(str(filters["subject"])))
 
     if filters.get("related_entity"):
         where += _related_conditions(target, filters["related_entity"])

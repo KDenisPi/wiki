@@ -6,6 +6,7 @@
     "filters": {
       "name": "World War II",
       "occupation": null,
+      "subject": "war",
       "location": null,
       "domain": "event",
       "time_constraint": null,

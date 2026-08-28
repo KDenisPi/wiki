@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": null,
+      "subject": "war",
       "location": "Europe",
       "domain": "event",
       "time_constraint": {

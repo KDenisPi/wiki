@@ -20,6 +20,10 @@ Convert the user's question into a structured JSON query intent. Extract:
   describing it only by category/occupation/domain/time. This is the target entity; a
   related_entity instead names a DIFFERENT entity the target is linked to (both can co-occur).
 - filters.occupation: an occupation string, or null
+- filters.subject: the kind of thing being asked for, as the sentence says it, or null.
+  "symphonies", "novels", "paintings", "battles", "elections" - the word that says WHICH sort of
+  work or event, singular and lowercased ("symphonies" -> "symphony"). Not for people: a person's
+  kind is their occupation. See the note below for how it differs from domain.
 - filters.location: a place name, or null
 - filters.domain: exactly one of "art" | "event" | "literature" | "music" | "person" | "place" |
   "science", or null. No other value is allowed - see the mapping rule below.
@@ -97,6 +101,13 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
   "theatre", "painting" -> "art". So "science inventions in physics" -> domain: "science".
   Use null when the sentence names no field the seven tags cover ("politics", "sports", "war"):
   a wrong tag is worse than none, since the other filters can still answer it.
+- filters.subject vs filters.domain: domain is the broad field a thing belongs to, from the closed
+  list of seven; subject is the specific kind of thing, in the sentence's own words. "List of all
+  Beethoven symphonies" is domain "music" AND subject "symphony" - the first says the answer is
+  musical, the second that it is symphonies rather than sonatas. They are filled in independently:
+  either, both, or neither. Where the seven tags cannot say what kind of thing is wanted - "wars",
+  "festivals", "elections" are all just "event" - subject is what carries it, so fill it in
+  whenever the sentence names a kind, even when domain already has a value.
 - filters.time_constraint:
     - person -> birth_year / death_year
     - event -> start_year / end_year

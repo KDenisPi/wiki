@@ -6,6 +6,7 @@
     "filters": {
       "name": "War and Peace",
       "occupation": null,
+      "subject": "war",
       "location": null,
       "domain": "literature",
       "time_constraint": null,

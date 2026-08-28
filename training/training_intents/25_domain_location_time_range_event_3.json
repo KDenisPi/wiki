@@ -6,6 +6,7 @@
     "filters": {
       "name": null,
       "occupation": null,
+      "subject": "election",
       "location": "France",
       "domain": "event",
       "time_constraint": {

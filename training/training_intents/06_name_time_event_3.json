@@ -6,6 +6,7 @@
     "filters": {
       "name": "Battle of Waterloo",
       "occupation": null,
+      "subject": "battle",
       "location": null,
       "domain": "event",
       "time_constraint": null,

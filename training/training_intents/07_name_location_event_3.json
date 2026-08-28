@@ -6,6 +6,7 @@
     "filters": {
       "name": "1900 Summer Olympics",
       "occupation": null,
+      "subject": "olympics",
       "location": null,
       "domain": "event",
       "time_constraint": null,

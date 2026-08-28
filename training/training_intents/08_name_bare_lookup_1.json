@@ -6,6 +6,7 @@
     "filters": {
       "name": "Symphony No. 5",
       "occupation": null,
+      "subject": "symphony",
       "location": null,
       "domain": "music",
       "time_constraint": null,
