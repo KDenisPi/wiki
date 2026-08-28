@@ -153,17 +153,22 @@ def _intent_text(path: Path) -> str:
     return json.dumps(raw, indent=2)
 
 
-def _lazy_client(url: str, model: str, options: dict):
+def _lazy_client(url: str, model: str, options: dict, timeout: float = 300.0):
     """A no-argument factory building one OllamaClient on first call and
     reusing it after. Stage 2 is often asked nothing at all - the composer
     answered - and constructing a client writes a session file, so it is not
-    built until something actually needs it."""
+    built until something actually needs it.
+
+    The timeout is long because the fine-tuned model is slow when it is
+    working and endless when it is not: OllamaClient's own 60s default cuts
+    off answers that would have arrived. --max-tokens is what actually bounds
+    the endless case."""
     client = None
 
     def get() -> OllamaClient:
         nonlocal client
         if client is None:
-            client = OllamaClient(url, model, options=options)
+            client = OllamaClient(url, model, options=options, timeout=timeout)
         return client
 
     return get
@@ -292,14 +297,20 @@ def full_run(args: argparse.Namespace) -> None:
     schema = Path(args.schema).read_text()
     sqlexamples = Path(args.sqlexamples).read_text()
 
-    options = {"temperature": args.temperature, "seed": args.seed}
+    #max_tokens is not optional for the tuned model. Uncapped it does not
+    #always stop: on some prompts it starts a plausible query and then
+    #enumerates 'P44', 'P45', 'P46' until the context is full, which reads
+    #as a hung server rather than as a model that never finished.
+    options = {"temperature": args.temperature, "seed": args.seed,
+               "max_tokens": args.max_tokens}
     prompt1 = _fill(context1, sentence=args.sentence)
-    client1 = OllamaClient(args.url, args.model1, options=options)
+    client1 = OllamaClient(args.url, args.model1, options=options,
+                           timeout=args.request_timeout)
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
     logger.info("stage1 intent (extracted):\n%s", intent)
 
     prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
-    stage2_once(args, intent, prompt2, _lazy_client(args.url, args.model2, options))
+    stage2_once(args, intent, prompt2, _lazy_client(args.url2, args.model2, options, args.request_timeout))
 
 
 def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
@@ -371,8 +382,13 @@ def step2_train(args: argparse.Namespace) -> None:
     context2 = Path(args.context2).read_text()
     schema = Path(args.schema).read_text()
     sqlexamples = Path(args.sqlexamples).read_text()
-    options = {"temperature": args.temperature, "seed": args.seed}
-    get_client = _lazy_client(args.url, args.model2, options)
+    #max_tokens is not optional for the tuned model. Uncapped it does not
+    #always stop: on some prompts it starts a plausible query and then
+    #enumerates 'P44', 'P45', 'P46' until the context is full, which reads
+    #as a hung server rather than as a model that never finished.
+    options = {"temperature": args.temperature, "seed": args.seed,
+               "max_tokens": args.max_tokens}
+    get_client = _lazy_client(args.url2, args.model2, options, args.request_timeout)
 
     training_dir = Path(args.training_folder)
     json_files = sorted(training_dir.glob("*.json"))
@@ -433,9 +449,28 @@ def main() -> None:
     parser.add_argument("--context2", default=str(DEFAULT_CONTEXT2), help="stage 2 context/template file")
     parser.add_argument("--schema", default=str(DEFAULT_SCHEMA), help="DDL/description file for stage 2")
     parser.add_argument("--sqlexamples", default=str(DEFAULT_SQL_EXAMPLES), help="SQL examples for stage 2")
-    parser.add_argument("--url", default="http://192.168.1.57:11434", help="Ollama server URL")
+    parser.add_argument("--url", default="http://192.168.1.57:11434",
+                        help="server for stage 1. Stage 2 has its own, --url2")
+    parser.add_argument("--url2", default="http://192.168.1.57:1235",
+                        help="server for stage 2, which is a different one because the fine-tuned "
+                        "model is served by llama-server rather than Ollama. Both speak the same "
+                        "OpenAI /v1/chat/completions API, so only the address and the naming "
+                        "differ. Pass the same value as --url to put both stages back on one server")
+    parser.add_argument("--max-tokens", type=int, default=1024,
+                        help="cap on a model reply, so one that never emits end-of-text is cut off "
+                        "in seconds instead of generating until the context is full. 1024 is well "
+                        "clear of anything legitimate: the longest correct stage-2 answer measured "
+                        "is 678 tokens")
+    parser.add_argument("--request-timeout", type=float, default=300.0,
+                        help="seconds to wait for one model reply, over OllamaClient's own 60s "
+                        "default - the tuned model takes longer than that on real prompts")
     parser.add_argument("--model1", default="llama3.1:8b", help="model for stage 1 (sentence -> intent)")
-    parser.add_argument("--model2", default="Qwen2.5-Coder-7B-Instruct-Q4_K_M:latest", help="model for stage 2 (intent -> SQL)")
+    parser.add_argument("--model2",
+                        default="/home/denis/projects/models/qwen2.5-coder-7b-instruct.Q4_K_M.gguf",
+                        help="model for stage 2 (intent -> SQL). llama-server names a model by the "
+                        ".gguf path it was started with, Ollama by its tag, so this changes with "
+                        "--url2 - the Ollama name for the untuned one is "
+                        "Qwen2.5-Coder-7B-Instruct-Q4_K_M:latest")
     parser.add_argument(
         "--temperature",
         type=float,
