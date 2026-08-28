@@ -7,7 +7,7 @@
       "name": null,
       "occupation": null,
       "location": null,
-      "domain": "war",
+      "domain": "event",
       "time_constraint": null,
       "related_entity": {
         "relation": "located_in",
