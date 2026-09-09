@@ -7,13 +7,10 @@
       "name": null,
       "occupation": null,
       "subject": null,
-      "location": null,
+      "location": "Paris",
       "domain": null,
       "time_constraint": null,
-      "related_entity": {
-        "relation": "located_in",
-        "entity_mention": "Paris"
-      },
+      "related_entity": null,
       "compare_entities": null
     }
   }

@@ -7,13 +7,10 @@
       "name": null,
       "occupation": null,
       "subject": "festival",
-      "location": null,
+      "location": "Rio de Janeiro",
       "domain": "event",
       "time_constraint": null,
-      "related_entity": {
-        "relation": "located_in",
-        "entity_mention": "Rio de Janeiro"
-      },
+      "related_entity": null,
       "compare_entities": null
     }
   }

@@ -7,13 +7,10 @@
       "name": null,
       "occupation": null,
       "subject": "battle",
-      "location": null,
+      "location": "Normandy",
       "domain": "event",
       "time_constraint": null,
-      "related_entity": {
-        "relation": "located_in",
-        "entity_mention": "Normandy"
-      },
+      "related_entity": null,
       "compare_entities": null
     }
   }

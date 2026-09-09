@@ -7,13 +7,10 @@
       "name": null,
       "occupation": null,
       "subject": "novel",
-      "location": null,
+      "location": "Saint Petersburg",
       "domain": "literature",
       "time_constraint": null,
-      "related_entity": {
-        "relation": "located_in",
-        "entity_mention": "Saint Petersburg"
-      },
+      "related_entity": null,
       "compare_entities": null
     }
   }
