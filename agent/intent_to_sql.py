@@ -271,6 +271,78 @@ def _person_cte(name: str, mention: str) -> str:
 )"""
 
 
+#With three or more entities the question stops being a relation between two
+#and becomes a superlative: not "did Beethoven live longer than Mahler" but
+#"who lived longest, Beethoven, Mahler or Mozart". The answer is a name, not a
+#boolean, which is why this cannot be the two-entity query with a longer FROM.
+#Keyed by (aspect, relation), each entry is the direction to look and the
+#measure to look at.
+SUPERLATIVES = {
+    ("age",        "more"):   ("greatest", "age"),
+    ("age",        "fewer"):  ("least",    "age"),
+    ("time",       "before"): ("least",    "born"),
+    ("time",       "after"):  ("greatest", "born"),
+    ("work_count", "more"):   ("greatest", "works"),
+    ("work_count", "fewer"):  ("least",    "works"),
+}
+
+
+def _measure(alias: str, measure: str) -> str:
+    """One entity's value for the quantity being compared.
+
+    Age is guarded the way the two-entity query guards it: a missing or absurd
+    death year would otherwise win or lose the comparison outright. NULL is the
+    right answer for "we do not know", and greatest/least skip it, so an entity
+    with no death date drops out of the running instead of deciding it.
+    """
+    if measure == "age":
+        return (f"CASE WHEN {alias}.died IS NOT NULL"
+                f" AND {alias}.died - {alias}.born BETWEEN 0 AND {MAX_LIFESPAN}"
+                f" THEN {alias}.died - {alias}.born END")
+    return f"{alias}.{measure}"
+
+
+def _compare_many(compare: dict, entities: list) -> str:
+    """Which of three or more named people wins on one measure."""
+    aspect, relation = compare.get("aspect"), compare.get("relation")
+    if aspect == "location":
+        #"were they all born in the same country" is a fold over the whole
+        #list, not a winner, and no question in the set asks it yet
+        raise Unsupported(f"{aspect} comparison across {len(entities)} entities")
+    picked = SUPERLATIVES.get((aspect, relation))
+    if picked is None:
+        raise Unsupported(f"{aspect} comparison {relation!r} across {len(entities)} entities")
+    extreme, measure = picked
+
+    aliases = [f"e{n}" for n in range(1, len(entities) + 1)]
+    ctes = [_person_cte(alias, mention) for alias, mention in zip(aliases, entities)]
+    values = [_measure(alias, measure) for alias in aliases]
+
+    names_list = "[" + ", ".join(f"{a}.name" for a in aliases) + "]"
+    values_list = "[" + ", ".join(values) + "]"
+    winner = f"{extreme}(" + ", ".join(values) + ")"
+
+    select = [f"{a}.name AS entity_{n}" for n, a in enumerate(aliases, 1)]
+    select += [f"({v}) AS {measure}_{n}" for n, v in enumerate(values, 1)]
+    #the name sitting at the same position as the winning value. list_position
+    #returns the first match, so an exact tie answers with the earliest named,
+    #which is the order the question asked them in.
+    select.append(f"list_extract({names_list},"
+                  f" list_position({values_list}, {winner})) AS answer")
+    sql = ("WITH " + ",\n".join(ctes) + "\n"
+           + "SELECT " + ",\n       ".join(select)
+           + "\nFROM " + ", ".join(aliases) + ";")
+    if compare.get("work_type"):
+        #"who composed more symphonies" is answered by counting every work
+        #each of them made, the same approximation the two-entity query makes.
+        #Saying so beats answering a narrower question than was asked without
+        #mentioning it: Beethoven leads on all works 166 to 49, and on
+        #symphonies alone the three are within one of each other.
+        sql = (f"-- dropped: work_type {compare['work_type']!r}"
+               f" - counting every work, not only that kind\n" + sql)
+    return sql
+
+
 def _compare_query(compare: dict) -> str:
     """Compare two named people directly - who lived longer, who wrote more.
 
@@ -278,6 +350,8 @@ def _compare_query(compare: dict) -> str:
     filtered down, but one row holding both entities' facts and the answer.
     """
     entities = compare.get("entities") or []
+    if len(entities) > 2:
+        return _compare_many(compare, entities)
     if len(entities) != 2:
         raise Unsupported(f"compare_entities with {len(entities)} entities")
 
@@ -646,6 +720,15 @@ def _self_check(db_path: str) -> int:
         ("who lived longer, misspelled",
          intent("person", compare_entities={"entities": ["Beethowen", "Mahler"],
                                             "aspect": "age", "relation": "more"})),
+        ("who lived longest of three",
+         intent("person", compare_entities={"entities": ["Beethoven", "Mahler", "Mozart"],
+                                            "aspect": "age", "relation": "more"})),
+        ("who was born first of three",
+         intent("person", compare_entities={"entities": ["Bach", "Handel", "Vivaldi"],
+                                            "aspect": "time", "relation": "before"})),
+        ("who composed more, of four",
+         intent("person", compare_entities={"entities": ["Beethoven", "Mahler", "Brahms", "Haydn"],
+                                            "aspect": "work_count", "relation": "more"})),
         ("did they live at the same time",
          intent("person", compare_entities={"entities": ["Beethowen", "Mahler"],
                                             "aspect": "time", "relation": "overlap"})),
