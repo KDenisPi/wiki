@@ -38,9 +38,16 @@ import json
 import re
 import sys
 
-#The seven tags in classes.domains, one per seed group in build_class_closure.py.
-#Anything else matches no row at all, so it is dropped rather than applied.
-DOMAINS = ("art", "event", "literature", "music", "person", "place", "science")
+#The tags in classes.domains worth filtering on, one per seed group in
+#build_class_closure.py. Anything else matches no row at all, so it is dropped
+#rather than applied - and that includes two of the tags the closure emits.
+#"art" reaches 3 items in the whole extract and "place" 1,353, against 7.4M for
+#person and 2.1M for literature, so asking for either empties the answer as
+#surely as a misspelling would. The visual arts are still reachable, just not
+#through this column: as an occupation ("painter", via occupation_areas, which
+#has its own live art area of 770 professions) or as a subject ("painting", via
+#P921/P136 on 19,520 items).
+DOMAINS = ("event", "literature", "music", "person", "science")
 
 #Who made a work. Which one a work uses is not predictable - a book is P50, a
 #symphony P86, a painting P170 - so they are always tested together.
@@ -74,6 +81,12 @@ C_LABEL = 'c."label"'
 #same reason: "class" is quoted, and the quotes cannot go inside an f-string
 CLASS_COL = '"class"'
 
+#Is the item a person - asserted for a person question, denied for a work or an
+#event one. Both halves have to ask the same thing, so they share the body.
+PERSON_CLASS = ('SELECT 1 FROM item_classes l'
+                ' JOIN classes c ON c.qid = l."class"'
+                ' WHERE l.qid = i.qid AND c.domains LIKE ')
+
 OCCUPATION_PROP = "P106"
 
 #An occupation word that names a whole area rather than a profession. Matching
@@ -90,7 +103,11 @@ OCCUPATION_AREAS = {
     "literature": "literature", "writer": "literature", "writers": "literature",
     "author": "literature", "authors": "literature",
 }
-SUBJECT_PROPS = ("P921", "P101", "P136")       # main subject, field of work, genre
+#What a thing is about. P101 "field of work" belongs beside these and is
+#deliberately absent: it is a property of PEOPLE, so including it made
+#subject "painting" match 13,049 painters - Masaccio, class human, P101 "art of
+#painting" - against 596 items that are actually about painting via P921.
+SUBJECT_PROPS = ("P921", "P136")               # main subject, genre
 PARTICIPANT_PROPS = ("P710", "P1344")          # participant, participant in
 BIRTH, DEATH = "P569", "P570"
 
@@ -173,16 +190,16 @@ def _subject_exists(value: str) -> str:
     """The kind of thing an item is, matched two ways because the data splits
     them and neither half is the general answer.
 
-    One is what the item is ABOUT - main subject, field of work, genre - which
-    is where a symphony's kind lives: 692 items carry it there and none carry
-    it as a class. The other is what the item IS, its class, which is where a
-    battle's kind lives: 14,824 as a class against 713 as a subject. Elections
+    One is what the item is ABOUT - main subject or genre - which is where a
+    symphony's kind lives: 652 items carry it there and none carry it as a
+    class. The other is what the item IS, its class, which is where a battle's
+    kind lives: 14,824 as a class against 636 as a subject. Elections
     and festivals go the same way as battles, paintings and novels the same way
     as symphonies. Requiring both would answer none of them.
 
-    classes.domains stays the coarse filter of seven tags; this is the specific
-    one beside it, so "musical works by Beethoven" can become "symphonies by
-    Beethoven"."""
+    classes.domains stays the coarse filter beside it, so "musical works by
+    Beethoven" can become "symphonies by Beethoven". Only work and event
+    questions get here; see build_sql for why a person question does not."""
     by_subject = _attribute_exists(SUBJECT_PROPS, _word_match(V_LABEL, value))
     class_match = _word_match(C_LABEL, value)
     by_class = (f"EXISTS (SELECT 1 FROM item_classes l"
@@ -356,6 +373,23 @@ def _time_conditions(target: str, constraint: dict, ctes: list) -> list:
         if not mention or relation not in ("overlap", "before", "after"):
             raise Unsupported(f"relative_to_entity {relation!r}")
         ctes.append(_anchor_cte(mention))
+        if target != "person":
+            #A work has one date, not a lifespan, so it cannot be compared the
+            #way two lives are - and asking it for a birth year, as this branch
+            #did for every target, matched nothing at all. The anchor is still
+            #a person, so "before Picasso" means before he was born and "after"
+            #means after he died, exactly as in the person case below.
+            year = _year_expr()
+            conditions = [f"{year} IS NOT NULL"]
+            if relation == "overlap":
+                conditions += [f"{year} >= (SELECT born FROM anchor)",
+                               f"{year} <= coalesce((SELECT died FROM anchor),"
+                               f" (SELECT born FROM anchor) + {MAX_LIFESPAN})"]
+            elif relation == "before":
+                conditions += [f"{year} <= (SELECT born FROM anchor)"]
+            else:
+                conditions += [f"{year} >= (SELECT died FROM anchor)"]
+            return conditions
         born, died = _year_expr(BIRTH), _year_expr(DEATH)
         conditions = [f"{born} IS NOT NULL",
                       f"coalesce({died} - {born}, 0) <= {MAX_LIFESPAN}"]
@@ -439,9 +473,15 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         #match on "Albert Einstein" also finds the quotation item labelled
         #"'Not everything that can be counted counts...' (attributed to Albert
         #Einstein)", which has no birthplace and sorts first alphabetically.
-        where.append(f"EXISTS (SELECT 1 FROM item_classes l"
-                     f" JOIN classes c ON c.qid = l.\"class\""
-                     f" WHERE l.qid = i.qid AND c.domains LIKE {_lit('%person%')})")
+        where.append(f"EXISTS ({PERSON_CLASS}{_lit('%person%')})")
+    else:
+        #And the mirror: a work or an event is not a person. The subject filter
+        #reaches people through properties they share with works - "paintings
+        #of the 15th century" led with Masaccio - and the class tag is the one
+        #signal that separates them. The tag is exactly "human" (7,442,341 of
+        #the 7,442,450 items carrying it), so this excludes people and nothing
+        #else, and an item with no class at all still passes.
+        where.append(f"NOT EXISTS ({PERSON_CLASS}{_lit('%person%')})")
 
     if filters.get("name"):
         name = filters["name"]
@@ -488,7 +528,22 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     if filters.get("subject"):
         #the specific kind of thing asked for - "symphonies" rather than
         #"musical works". See _subject_exists for why it is matched two ways.
-        where.append(_subject_exists(str(filters["subject"])))
+        subject = str(filters["subject"])
+        if target == "person":
+            #What kind of thing a person is has one answer, "human", and the
+            #question never means that. Stage 1 fills the field anyway when the
+            #sentence has a noun to spare - "which musicians worked in jazz"
+            #arrives as subject "musicians" - and applying it drops everyone.
+            #The role is already carried by occupation.
+            dropped.append(f"subject {subject!r} on a person question")
+        elif filters.get("name"):
+            #The name has already picked the entity out; a kind can only narrow
+            #it further, and narrows it to nothing when the guess is wrong -
+            #"When was the Mona Lisa painted?" arrives with subject "painting",
+            #which the item itself does not claim.
+            dropped.append(f"subject {subject!r} beside an explicit name")
+        else:
+            where.append(_subject_exists(subject))
 
     if filters.get("related_entity"):
         where += _related_conditions(target, filters["related_entity"])

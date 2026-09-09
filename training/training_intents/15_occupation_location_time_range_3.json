@@ -8,7 +8,7 @@
       "occupation": "painter",
       "subject": null,
       "location": "Italy",
-      "domain": "art",
+      "domain": null,
       "time_constraint": {
         "type": "in_range",
         "start_year": 1501,

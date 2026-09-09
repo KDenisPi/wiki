@@ -25,8 +25,8 @@ Convert the user's question into a structured JSON query intent. Extract:
   work or event, singular and lowercased ("symphonies" -> "symphony"). Not for people: a person's
   kind is their occupation. See the note below for how it differs from domain.
 - filters.location: a place name, or null
-- filters.domain: exactly one of "art" | "event" | "literature" | "music" | "person" | "place" |
-  "science", or null. No other value is allowed - see the mapping rule below.
+- filters.domain: exactly one of "event" | "literature" | "music" | "person" | "science", or
+  null. No other value is allowed - see the mapping rule below.
 - filters.time_constraint: one of:
   {"type": "in_range", "start_year": int, "end_year": int, "precision": "year"|"decade"|"century",
    "event": "born"|"died"|"alive"}
@@ -55,7 +55,7 @@ ENTITIES (target_type)
 
 1. person — a human individual
    - occupation: one or more roles/professions (e.g. "physicist", "novelist", "musician")
-   - domain: field of activity, as one of the seven tags ("music", "science", "literature", "art")
+   - domain: field of activity, as one of the five tags ("music", "science", "literature")
    - location: birthplace, nationality, or place of residence
    - time: birth_year, death_year (defines the person's active period)
 
@@ -67,7 +67,7 @@ ENTITIES (target_type)
    - participants: related person entities
 
 3. work — a created output (book, song, film, paper, building, invention, discovery, theory, patent, etc.)
-   - domain: genre/field, as one of the seven tags ("literature", "music", "science", "art")
+   - domain: genre/field, as one of the five tags ("literature", "music", "science")
    - creator: related person entity
    - location: place of origin or publication
    - time: creation/publication year
@@ -92,20 +92,23 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
   it with related_entity: name is the target itself; related_entity is a different, linked entity.
 - filters.occupation: only meaningful when target_type = "person"
 - filters.location: person -> birthplace/nationality; event -> where it happened; work -> place of origin
-- filters.domain: applies to any target_type, and is a closed vocabulary of seven tags — art, event,
-  literature, music, person, place, science. It is not free text: the knowledge base stores exactly
-  these seven, so any other word matches nothing at all and silently empties the answer. Map whatever
+- filters.domain: applies to any target_type, and is a closed vocabulary of five tags — event,
+  literature, music, person, science. It is not free text: the knowledge base stores exactly
+  these five, so any other word matches nothing at all and silently empties the answer. Map whatever
   the sentence says onto the nearest tag rather than repeating it verbatim, and prefer the umbrella
   term over the specific one — "physics", "mathematics", "chemistry", "astronomy", "invention",
-  "discovery" -> "science"; "jazz", "opera", "symphony" -> "music"; "poetry", "novels" -> "literature";
-  "theatre", "painting" -> "art". So "science inventions in physics" -> domain: "science".
-  Use null when the sentence names no field the seven tags cover ("politics", "sports", "war"):
-  a wrong tag is worse than none, since the other filters can still answer it.
+  "discovery" -> "science"; "jazz", "opera", "symphony" -> "music"; "poetry", "novels" -> "literature".
+  So "science inventions in physics" -> domain: "science".
+  Use null when the sentence names no field the five tags cover — "politics", "sports", "war", and
+  the whole visual-arts family ("art", "painting", "sculpture", "theatre", "Renaissance art"), which
+  has no tag of its own. A wrong tag is worse than none, since the other filters can still answer it:
+  "Which painters worked in Italy?" is occupation "painter" + location "Italy" + domain null, and
+  "Which paintings were created in the 15th century?" is subject "painting" + domain null.
 - filters.subject vs filters.domain: domain is the broad field a thing belongs to, from the closed
-  list of seven; subject is the specific kind of thing, in the sentence's own words. "List of all
+  list of five; subject is the specific kind of thing, in the sentence's own words. "List of all
   Beethoven symphonies" is domain "music" AND subject "symphony" - the first says the answer is
   musical, the second that it is symphonies rather than sonatas. They are filled in independently:
-  either, both, or neither. Where the seven tags cannot say what kind of thing is wanted - "wars",
+  either, both, or neither. Where the five tags cannot say what kind of thing is wanted - "wars",
   "festivals", "elections" are all just "event" - subject is what carries it, so fill it in
   whenever the sentence names a kind, even when domain already has a value.
   subject never stands in for another filter. "List of all Beethoven symphonies" names a kind AND
