@@ -3,13 +3,24 @@
 # Rebuild the whole extract from the dump with the fixed parser, into a new
 # directory, leaving the current one untouched until the result is checked.
 #
-# Why re-read 2 TB at all: Wikidata moved labels that read the same in every
-# language into a single labels.mul entry and removed labels.en for those
-# Items. The parser read labels.en only, so 1,609,929 Items came out of the
-# last run with no English label - among them Barack Obama, Leonardo da Vinci,
-# Michael Jackson, because the migration went through the most-linked Items
-# first. cpp/item_parser.h now falls back to labels.mul, and labels.mul is only
-# in the dump, so the fix needs a pass over it.
+# Why re-read 2 TB at all: the attribute allowlist changed, and which
+# attributes are kept is decided while the dump is parsed, so a new property
+# cannot be backfilled from the CSVs of an earlier run.
+#
+# This run adds P7937 "form of creative work" - the property carrying the FORM
+# of a work (novel, poem, play, opera, symphony). Nothing else in the allowlist
+# says what kind of thing a work is: P31 covers objects and events (painting,
+# film, battle) and arrives through select_classes.csv, but the textual and
+# musical forms live only in P7937. Q188709 "Symphony No. 5" holds P7937=Q9734
+# and no other statement of its kind, which is why 8 of Beethoven's 9
+# symphonies could not be found by "Beethoven symphonies" at all.
+#
+# The previous run existed for a different reason, and its check survives in
+# preflight: Wikidata moved labels that read the same in every language into
+# labels.mul and dropped labels.en for those Items, which cost the run before
+# it 1,609,929 English labels. cpp/item_parser.h falls back to labels.mul now,
+# and the fixture probe below refuses to start a 21-hour run on a binary that
+# has regressed.
 #
 # What runs, in order:
 #
@@ -48,8 +59,8 @@
 set -uo pipefail
 
 WIKI=${WIKI:-/home/denis/projects/wiki}
-OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run3}
-OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run2}
+OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run4}
+OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run3}
 DUMP=${DUMP:-/mnt/nfs/wiki/wikidata-20250922-all.json}
 PROPS=${PROPS:-/home/denis/projects/wiki_data/properties.json}
 CONFIG=${CONFIG:-/home/denis/projects/wiki_data/classes}
@@ -171,23 +182,42 @@ def counts(path):
         FROM items''').fetchone()
     spot = {q: con.execute('SELECT "label" FROM items WHERE qid = ?', [q]).fetchone()
             for q in ("Q762", "Q76", "Q2831", "Q12418")}
+    #what this run is for: P7937 rows at all, and whether they reach the case
+    #that prompted it - Beethoven's nine symphonies, none of which could be
+    #found by kind before, because only P7937 says they are symphonies
+    forms = con.execute("SELECT count(*) FROM attributes"
+                        " WHERE property = 'P7937'").fetchone()[0]
+    symphonies = con.execute("""
+        SELECT count(*) FROM items i
+        WHERE EXISTS (SELECT 1 FROM attributes a JOIN value_items v ON v.qid = a."value"
+                      WHERE a.qid = i.qid AND a.property IN ('P921','P136','P7937')
+                        AND regexp_matches(v."label", '(?i)\\bsymphony'))
+          AND EXISTS (SELECT 1 FROM attributes a JOIN value_items v ON v.qid = a."value"
+                      WHERE a.qid = i.qid AND a.property = 'P86'
+                        AND regexp_matches(v."label", '(?i)\\bBeethoven'))""").fetchone()[0]
     con.close()
-    return row, spot
+    return row, spot, forms, symphonies
 
 new_counts = counts(new)
 if new_counts is None:
     raise SystemExit(f"no database at {new}")
-(items, no_label, values_no_label), spot = new_counts
+(items, no_label, values_no_label), spot, forms, symphonies = new_counts
 print(f"  items                     {items:,}")
 print(f"  items with no label       {no_label:,}  ({no_label / items:.1%})")
 print(f"  attribute values no label {values_no_label:,}")
 
+print(f"  P7937 rows                {forms:,}")
+print(f"  Beethoven symphonies      {symphonies} findable by kind"
+      f"   {'OK' if symphonies >= 9 else 'LOW - expected 9'}")
+
 old_counts = counts(old)
 if old_counts:
-    (o_items, o_no_label, o_values), _ = old_counts
+    (o_items, o_no_label, o_values), _, o_forms, o_symphonies = old_counts
     print(f"  previous run              {o_items:,} items, {o_no_label:,} unlabelled,"
           f" {o_values:,} values unlabelled")
     print(f"  labels recovered          {o_no_label - no_label:,}")
+    print(f"  previous run P7937        {o_forms:,} rows,"
+          f" {o_symphonies} Beethoven symphonies findable")
 
 print("  spot checks (label in the new database):")
 for qid, name in (("Q762", "Leonardo da Vinci"), ("Q76", "Barack Obama"),

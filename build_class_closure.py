@@ -77,6 +77,15 @@ SEEDS = [
     ("Q2188189",    "music",     SUBCLASS),   # musical work
     ("Q207628",     "music",     SUBCLASS),   # composed musical work
 
+    #The visual arts had no seed of their own: "arts event" and "theatrical
+    #occupation" below are the only two the art domain ever had, which is why
+    #it reached 3 items in run3 and why domain "art" had to be dropped from the
+    #composer. Painting is added rather than its parents because the P279 graph
+    #is filthy above it - "work of art" closes over 186,990 classes and
+    #"sculpture" over 145,344, both of which drag in unrelated branches, while
+    #painting closes over 265 and covers 1,122,188 items.
+    ("Q3305213",    "art",       SUBCLASS),   # painting
+
     ("Q12737077",   "occupation", OCCUPATION),  # occupation
     ("Q135106813",  "music",      OCCUPATION),  # musical occupation
     ("Q15839299",   "art",        OCCUPATION),  # theatrical occupation
