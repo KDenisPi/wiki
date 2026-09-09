@@ -376,6 +376,9 @@ public:
         P136; genre
         P921; main subject
 
+        What kind of thing a work is:
+        P7937; form of creative work
+
         People behind a work:
         P50; author
         P86; composer
@@ -392,7 +395,7 @@ public:
 
         std::vector<pID> v_attribute_props = {
             "P27", "P19", "P20", "P937",
-            "P106", "P101", "P136", "P921",
+            "P106", "P101", "P136", "P921", "P7937",
             "P50", "P86", "P170", "P175", "P676",
             "P17", "P276", "P710", "P1344"
         };
