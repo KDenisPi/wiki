@@ -20,9 +20,18 @@
 #                                               this from citizenship/birth/death
 #   P69   educated at          77% of people   question families the extract
 #   P166  award received       67% of people    cannot answer at all today
+#   P527  has part(s)          62% of events   stored, not yet usable: see below
+#   P361  part of              42% of events
 #
 # P1412 and P6886 matter where citizenship is actively wrong: Nabokov wrote in
 # English and Russian, Conrad in English, and P27 says neither.
+#
+# P527 and P361 are along for the ride, because one more property in a re-parse
+# costs nothing and wanting it afterwards costs another 21 hours. They are not
+# usable on arrival: "which battles were part of WWII" needs a transitive
+# closure over P361, since the hierarchy is multi-level - Normandy landings is
+# part of Operation Overlord, which is part of the war - and an intent relation
+# to ask it with. Expect them to sit unused until both exist.
 #
 # The previous run added P7937 "form of creative work" and seeded painting in
 # build_class_closure.py. Both worked: P7937 went from 0 rows to 303,706, all
@@ -200,7 +209,8 @@ def counts(path):
     #two that motivated it reach their cases - a novel that can be told apart
     #by language, and a person whose residence is stated rather than inferred
     added = {}
-    for pid in ("P407", "P495", "P1412", "P6886", "P551", "P69", "P166"):
+    for pid in ("P407", "P495", "P1412", "P6886", "P551", "P69", "P166",
+                "P527", "P361"):
         added[pid] = con.execute("SELECT count(*) FROM attributes"
                                  " WHERE property = ?", [pid]).fetchone()[0]
     #"What novels exist in French literature?" and the Russian version of the

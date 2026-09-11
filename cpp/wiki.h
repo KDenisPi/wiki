@@ -402,6 +402,10 @@ public:
         A life outside the work:
         P69; educated at
         P166; award received
+
+        Structure:
+        P527; has part(s)
+        P361; part of
         */
 
         std::vector<pID> v_attribute_props = {
@@ -410,7 +414,8 @@ public:
             "P50", "P86", "P170", "P175", "P676",
             "P17", "P276", "P710", "P1344",
             "P407", "P495", "P1412", "P6886",
-            "P69", "P166"
+            "P69", "P166",
+            "P527", "P361"
         };
 
         props->load_attribute_property(v_attribute_props);
