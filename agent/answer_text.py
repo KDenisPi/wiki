@@ -96,8 +96,14 @@ def _compare_two(get, row) -> str:
         phrase = f"{n1} has {w1:,} works in the extract, {n2} {w2:,}"
     else:
         c1, c2 = get(row, "country_1"), get(row, "country_2")
-        if verdict is True and c1:
-            phrase = f"both from {c1}"
+        #each side is a comma-joined list and the SQL answers on their
+        #INTERSECTION, so "both from" may name only part of either. Saying
+        #"both from Austrian Empire, Electorate of Cologne" when only the
+        #first is shared asserts two things the row never claimed.
+        shared = [c for c in str(c1 or "").split(", ")
+                  if c and c in str(c2 or "").split(", ")]
+        if verdict is True and shared:
+            phrase = f"both from {_join(shared)}"
         else:
             #each country is itself a comma-joined list ("Salzburg, Holy Roman
             #Empire"), so the two people are split by a semicolon or the
@@ -215,6 +221,12 @@ def _self_check() -> int:
         (["entity_1", "entity_2", "country_1", "country_2", "answer"],
          [("Bach", "Beethoven", "Germany", "Germany", True)],
          "Yes - both from Germany."),
+        #only the overlap is shared, and it is the only part that may be named
+        (["entity_1", "entity_2", "country_1", "country_2", "answer"],
+         [("Ludwig van Beethoven", "Gustav Mahler",
+           "Austrian Empire, Electorate of Cologne",
+           "Austria, Austrian Empire, Cisleithania", True)],
+         "Yes - both from Austrian Empire."),
         (["entity_1", "entity_2", "country_1", "country_2", "answer"],
          [("Mozart", "Beethoven", "Austria", "Germany", False)],
          "No - Mozart from Austria; Beethoven from Germany."),

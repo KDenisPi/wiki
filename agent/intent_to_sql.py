@@ -544,7 +544,23 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     if filters.get("compare_entities"):
         #a comparison answers with one row about two entities, not a filtered
         #list, so it is built separately and returned whole
-        return _compare_query(filters["compare_entities"])
+        sql = _compare_query(filters["compare_entities"])
+        name = filters.get("name")
+        if name:
+            #A comparison names its own entities, so a name filter beside one
+            #is either redundant or a contradiction, and stage 1 produces the
+            #second: "On which countries did Beethoven live" arrived as name
+            #"Beethoven" AND a comparison of "Beethowen" with "Mahler", who is
+            #not in the sentence at all. The name cannot be applied to a
+            #comparison, but its presence is the evidence that the comparison
+            #was invented, so it is recorded rather than silently discarded.
+            entities = filters["compare_entities"].get("entities") or []
+            note = ("redundant" if any(str(name).lower() in str(e).lower()
+                                       or str(e).lower() in str(name).lower()
+                                       for e in entities)
+                    else f"not among {', '.join(map(str, entities))}")
+            sql = f"-- dropped: name {name!r} beside a comparison - {note}\n" + sql
+        return sql
 
     answer_field = intent.get("answer_field")
     if answer_field not in (None, "time", "location"):
