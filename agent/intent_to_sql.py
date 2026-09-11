@@ -31,7 +31,7 @@ back to the model rather than get a confidently wrong query.
     ...                                           "entity_mention": "Isaac Newton"}}})
 
 Self-check (builds SQL for a set of intents and runs each one):
-    python intent_to_sql.py --db /home/denis/projects/wiki_data/run3/wiki.duckdb
+    python intent_to_sql.py --db /home/denis/projects/wiki_data/run4/wiki.duckdb
 """
 
 import json
@@ -40,14 +40,18 @@ import sys
 
 #The tags in classes.domains worth filtering on, one per seed group in
 #build_class_closure.py. Anything else matches no row at all, so it is dropped
-#rather than applied - and that includes two of the tags the closure emits.
-#"art" reaches 3 items in the whole extract and "place" 1,353, against 7.4M for
-#person and 2.1M for literature, so asking for either empties the answer as
-#surely as a misspelling would. The visual arts are still reachable, just not
-#through this column: as an occupation ("painter", via occupation_areas, which
-#has its own live art area of 770 professions) or as a subject ("painting", via
-#P921/P136 on 19,520 items).
-DOMAINS = ("event", "literature", "music", "person", "science")
+#rather than applied - and that still includes one of the tags the closure
+#emits. Measured on run4: person 7,442,437, literature 2,043,301, event
+#1,768,638, art 708,251, music 483,185, science 15,550 - and "place" 914, which
+#is why it alone is missing here. Asking for a place empties the answer as
+#surely as a misspelling would; locations are filtered through PLACE_PROPS
+#instead, which is what a place question actually means.
+#
+#"art" was dropped from this list too when it reached 3 items, and is back
+#because it no longer does: build_class_closure.py had no seed for the visual
+#arts at all until painting (Q3305213) was added, which closes over 265 classes
+#and carries 708,251 items - 707,888 of them new to the extract in run4.
+DOMAINS = ("art", "event", "literature", "music", "person", "science")
 
 #Who made a work. Which one a work uses is not predictable - a book is P50, a
 #symphony P86, a painting P170 - so they are always tested together.
@@ -103,11 +107,21 @@ OCCUPATION_AREAS = {
     "literature": "literature", "writer": "literature", "writers": "literature",
     "author": "literature", "authors": "literature",
 }
-#What a thing is about. P101 "field of work" belongs beside these and is
-#deliberately absent: it is a property of PEOPLE, so including it made
-#subject "painting" match 13,049 painters - Masaccio, class human, P101 "art of
-#painting" - against 596 items that are actually about painting via P921.
-SUBJECT_PROPS = ("P921", "P136")               # main subject, genre
+#What a thing is about, or what form it takes. P921 and P136 say what a work is
+#ABOUT; P7937 says what it IS, and it is the only one of the three that does -
+#nothing else in the extract carries the textual and musical forms. It is worth
+#far more than its late arrival suggests: "novel" reaches 73,205 items with it
+#against 4,819 without, "poem" 23,968 against 705, "symphony" 1,532 against 652.
+#
+#P7937 adds nothing for "painting" (0 rows), and should not: object and event
+#types - painting, film, battle - are P31, and arrive through the class closure.
+#The two properties are complementary, not alternatives.
+#
+#P101 "field of work" belongs beside these by name and is deliberately absent:
+#it is a property of PEOPLE, so including it made subject "painting" match
+#13,049 painters - Masaccio, class human, P101 "art of painting" - against the
+#items that are actually about painting.
+SUBJECT_PROPS = ("P921", "P136", "P7937")      # main subject, genre, form
 PARTICIPANT_PROPS = ("P710", "P1344")          # participant, participant in
 BIRTH, DEATH = "P569", "P570"
 
@@ -781,7 +795,7 @@ def _self_check(db_path: str) -> int:
 
 
 if __name__ == "__main__":
-    db = "/home/denis/projects/wiki_data/run3/wiki.duckdb"
+    db = "/home/denis/projects/wiki_data/run4/wiki.duckdb"
     args = sys.argv[1:]
     if args and args[0] == "--db":
         db = args[1]

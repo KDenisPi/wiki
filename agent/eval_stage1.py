@@ -286,7 +286,7 @@ def main() -> None:
                         help="only cases whose name contains this string")
     parser.add_argument("--max-cases", type=int, default=0,
                         help="stop after this many cases (0 = all of them)")
-    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run3/wiki.duckdb",
+    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run4/wiki.duckdb",
                         help="DuckDB file the composed queries are run against")
     parser.add_argument("--no-db", action="store_true",
                         help="skip execution: score the intent and the SQL text only, which "

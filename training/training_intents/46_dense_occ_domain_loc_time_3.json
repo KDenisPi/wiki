@@ -8,7 +8,7 @@
       "occupation": "painter",
       "subject": null,
       "location": "France",
-      "domain": null,
+      "domain": "art",
       "time_constraint": {
         "type": "in_range",
         "start_year": 1801,

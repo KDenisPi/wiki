@@ -97,7 +97,7 @@ def used_occupations(db_path: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run3/wiki.duckdb")
+    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run4/wiki.duckdb")
     parser.add_argument("--out", default="/home/denis/projects/wiki_data/classes/occupation_areas.csv")
     parser.add_argument("--cache", default="/home/denis/projects/wiki/cache")
     parser.add_argument("--min-people", type=int, default=1,
