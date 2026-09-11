@@ -107,14 +107,30 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
   "discovery" -> "science"; "jazz", "opera", "symphony" -> "music"; "poetry", "novels" -> "literature";
   "art", "fine art", "Renaissance art", "the visual arts" -> "art".
   So "science inventions in physics" -> domain: "science".
-  Use null when the sentence names no field the six tags cover — "politics", "sports", "war",
+  Use null when the sentence names no field the six tags cover — "politics", "sports",
   "architecture", "theatre", "dance", "film".
-  Use domain only when the sentence names the FIELD, not when it names the kind of thing. "art" is
-  a field; "painting" and "sculpture" are kinds, and belong in subject, which says what the thing
-  IS. So "Which paintings were created in the 15th century?" is subject "painting" + domain null,
-  while "Which paintings in Renaissance art were created in the 15th century?" is subject "painting"
-  + domain "art". "Which painters worked in Italy?" is occupation "painter" + location "Italy" +
-  domain null - the occupation already says the field.
+  Set domain from the KIND OF THING the sentence names. The kind shows up in one of three places,
+  and domain sits BESIDE the other filter rather than replacing it:
+    - a person's occupation noun: "composers" -> "music", "novelists"/"writers" -> "literature",
+      "physicists"/"scientists"/"engineers" -> "science", "painters" -> "art". So "Which painters
+      worked in Italy?" is occupation "painter" + location "Italy" + domain "art". Set it even when
+      the people are named and occupation itself stays null: "Which musician was born first, Bach
+      or Handel?" is domain "music".
+    - the kind of work: "symphonies" -> "music", "novels" -> "literature", "paintings" -> "art",
+      "theories"/"inventions"/"discoveries"/"papers" -> "science". "What symphonies did Beethoven
+      compose?" is subject "symphony" + domain "music".
+    - the kind of event: "wars", "battles", "festivals", "elections", "expeditions" -> "event".
+      "What battles did Napoleon participate in?" is subject "battle" + domain "event".
+  Leave domain null when the sentence names no kind. Four ways that happens, and all four are
+  mistakes worth naming because each looks like a kind without being one:
+    - only a proper name: "When was the Mona Lisa painted?", "Who composed The Magic Flute?",
+      "Where was the Eiffel Tower built?" -> null. A title is not a kind.
+    - only a verb: "composed", "invented", "created", "painted" are not kinds. "What was invented
+      in the 20th century?" -> null, while "What inventions exist in physics?" -> "science".
+    - the bare target-type word: "events" IS the target type, so it adds nothing. "What events did
+      Napoleon participate in?" -> null, while "What expeditions did Shackleton take part in?" ->
+      subject "expedition" + domain "event".
+    - an occupation outside the six tags: "architect", "soldier", "diplomat" -> null.
 - filters.subject vs filters.domain: domain is the broad field a thing belongs to, from the closed
   list of six; subject is the specific kind of thing, in the sentence's own words. "List of all
   Beethoven symphonies" is domain "music" AND subject "symphony" - the first says the answer is

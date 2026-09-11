@@ -8,7 +8,7 @@
       "occupation": null,
       "subject": "painting",
       "location": null,
-      "domain": null,
+      "domain": "art",
       "time_constraint": {
         "type": "relative_to_entity",
         "relation": "before",
