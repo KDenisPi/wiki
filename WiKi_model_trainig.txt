@@ -1,0 +1,132 @@
+Don't make the model memorize entity IDs
+
+Your target questions reference things like "Germany," "scientist," "1400s" — these map to specific QIDs and date ranges in your DuckDB tables. If you let the model generate SQL with literal QIDs baked in from memory (WHERE P27 = 'Q183'), you've reintroduced the exact hallucination risk we discussed for raw factual recall — the model might misremember or invent an ID.
+
+Better split of responsibilities:
+
+Stage 1 (formalize): raw text → structured intent with unresolved natural-language entity mentions, e.g. {"role": "scientist", "location": "Germany", "time_range": "15th century", "domain": null}
+A deterministic lookup layer (plain code, not a model): resolves "Germany" → Q183 and "scientist" → the relevant occupation QID(s) by querying your items table directly (exact/fuzzy label match). This is fast, correct, and free of hallucination risk since it's just a database lookup.
+Stage 2 (SQL generation): structured intent with resolved QIDs already substituted in → SQL. Now the model's job is purely structural — which tables to join, which columns to filter, how to express "15th century" as a date range — not "remember what Germany's QID is."
+
+This also makes each stage individually easier to train and evaluate, and lets you swap/improve the lookup layer without retraining anything.
+
+Training steps — Stage 2 (structured intent → SQL)
+
+This is the one I'd prioritize first; it's the higher-leverage, more tractable stage.
+
+Pick a code-capable base model. SQL generation benefits noticeably from a base model with strong code pretraining — Qwen2.5-Coder or a similar coder-family model tends to outperform general chat models at this task per-parameter. Given your DuckDB dialect specifically, prefer whichever coder model you can confirm has seen SQL (not just Python) at scale in pretraining.
+Build the dataset from templates, not free generation. Because your schema is fixed and small (items / items_i18n / facts / your planned link-properties table), enumerate query shapes by hand: "count of X by century," "list of X with property Y in location Z," "join items+facts+links filtered by occupation and date range," etc. For each shape, generate the SQL programmatically (guaranteed correct, since you control the template) and generate multiple natural-language phrasings of the same intent (this is safe to do with a larger model — you're varying phrasing, not injecting facts).
+Always include the schema in the training context. Every training example's prompt should contain the relevant CREATE TABLE statements or a compact schema description, not just the question. This is standard practice in text-to-SQL fine-tuning and lets the model generalize to schema tweaks later without full retraining.
+Cover the awkward cases deliberately, since these are where naive text-to-SQL models fail in practice:
+Precision-aware date filtering (century vs decade vs exact year, using your precision field from the earlier extraction)
+Multiple qualifying joins (person + occupation + location + time range all at once)
+Questions with no valid answer / empty result set (so the model doesn't invent a query that silently returns nonsense)
+Evaluate by execution, not by SQL string match. Don't just diff generated SQL against gold SQL — different but equally correct SQL can look totally different textually (join order, alias names). Actually run both queries against your DuckDB instance and compare the result sets. This is the standard eval methodology in the text-to-SQL literature (execution accuracy) and is the only reliable signal here.
+Fine-tune with LoRA/QLoRA as discussed earlier — this task doesn't need full fine-tuning; low-rank adapters are typically sufficient for a schema-conditioned generation task like this.
+Training steps — Stage 1 (formalize → structured intent)
+Frame it as structured extraction, not free-text rewriting. Output a fixed JSON schema (role/occupation, location, time range, domain, etc.) rather than reformulated prose — this is easier to validate programmatically and easier to fine-tune reliably (classification/extraction-shaped tasks are more forgiving than open-ended generation).
+Generate training data from the same templates as Stage 2, just stopping one step earlier — reuse the intent objects you already built for Stage 2, and generate varied natural phrasings of the question (not the SQL) as the input side.
+Include deliberately ambiguous/underspecified questions in the training set, with a defined behavior for that case (e.g., a null slot, or a clarification-request output) — decide up front how you want the model to handle "who were the famous scientists?" (no time range, no location) rather than letting it guess.
+Same LoRA fine-tuning approach applies; this stage is simpler than Stage 2 so may need less data to converge well.
+
+Given the split above, it's also worth asking whether Stage 1 needs to be a fine-tuned model at all, versus a lighter-weight approach (a well-prompted instruct model with few-shot examples, no fine-tuning) — since slot extraction from a bounded domain is something base instruction-tuned models are often already decent at. Fine-tuning is more clearly justified for Stage 2, where you need consistent DuckDB-dialect SQL and schema-specific behavior a generic model won't have out of the box.
+
+
+I understood about training on level 2 (text to SQL). Could you provide steps for step 1. For example I have human requests like "Which musicians lived on the same time as Beethoven?" - What should I do with it? What is my request to model (?) for formalization?
+
+
+Architected Stage 1 formalization pipeline for temporal entity queries
+Architected Stage 1 formalization pipeline for temporal entity queries
+Good example — it's useful precisely because it's not a simple "in year X" query. It has a relative time reference (anchored to another entity's lifespan, not an explicit date), which is a case your schema needs to explicitly support.
+
+Working through this example
+"Which musicians lived on the same time as Beethoven?" decomposes into:
+
+target type: person
+occupation filter: musician
+time constraint: not a fixed range — it's relative to another entity's lifespan (Beethoven's), with an implied relation of "overlapping"
+location/domain: unspecified
+The key design point: Stage 1 should extract "Beethoven" as a text span, not resolve it to anything. The model doesn't need to know who Beethoven is or when he lived — it just needs to recognize "this phrase is a person being used as a time anchor." Resolution (Beethoven → QID → his birth/death years → a concrete date range) happens in your deterministic lookup layer, between Stage 1 and Stage 2. This keeps Stage 1 hallucination-free, same reasoning as before.
+
+A structured intent schema that handles this
+You need a time_constraint field with more than one possible shape. Define a small, fixed vocabulary of constraint types up front — don't let the model invent free-text time descriptions:
+
+json
+{
+  "target_type": "person",
+  "filters": {
+    "occupation": "musician",
+    "location": null,
+    "domain": null,
+    "time_constraint": {
+      "type": "relative_to_entity",
+      "relation": "overlap",
+      "entity_mention": "Beethoven"
+    }
+  }
+}
+Other time_constraint.type values you'd define for your other question shapes:
+
+{"type": "in_range", "start_year": 1400, "end_year": 1499, "precision": "century"} — for "in the 1400s"
+{"type": "relative_to_entity", "relation": "before" | "after" | "overlap", "entity_mention": "..."} — for "before/after/during X's lifetime"
+null — for no time constraint at all ("who were famous musicians" with no time filter)
+relation should be a closed enum (overlap, before, after, maybe same_birth_year) — decide the finite list now, since it directly determines what your deterministic layer needs to compute later (e.g. overlap → do the two lifespan intervals intersect).
+
+What your "request to the model" actually looks like
+This is the prompt template — same structure at training time and inference time:
+
+System/instruction portion (fixed, included in every example):
+
+Convert the user's question into a structured JSON query intent. Extract:
+- target_type: "person" | "event" | "work"
+- filters.occupation: an occupation string, or null
+- filters.location: a place name, or null
+- filters.domain: "music" | "science" | "literature" | ... or null
+- filters.time_constraint: one of:
+  {"type": "in_range", "start_year": int, "end_year": int, "precision": "year"|"decade"|"century"}
+  {"type": "relative_to_entity", "relation": "overlap"|"before"|"after", "entity_mention": string}
+  null
+
+Extract entity mentions as literal text spans — do not resolve names to
+identifiers or add facts not present in the question. Output valid JSON only.
+User turn: Which musicians lived on the same time as Beethoven?
+
+Target output (what you train the model to produce): the JSON block above.
+
+Building training data for this
+Enumerate time_constraint shapes (in-range, relative-to-entity × relation, none) as separate template families.
+For each, hand-write or template-generate several base examples with a placeholder entity/occupation/location ("Which <OCCUPATION> lived <RELATIVE_TIME> as <ENTITY>?").
+Fill placeholders from real values you already have in your items/facts tables (real occupations, real names) so the surface text is realistic, but keep the target JSON purely template-derived — you control correctness completely, no hallucination risk.
+Generate paraphrase variety on the input question only (a larger model rewriting "Which musicians lived at the same time as Beethoven" → "Name some musicians who were alive during Beethoven's life" etc.) — never touch the target JSON when paraphrasing, so label correctness isn't at the mercy of the paraphraser.
+Include a few deliberately ambiguous or underspecified examples with an explicit, decided-in-advance correct output (e.g., all filters null except occupation) so the model doesn't need to guess how to handle missing information.
+This example is also a good stress test to keep in your eval set specifically, since "relative to another entity" is the constraint type most likely to trip up both stages if the schema or downstream resolution logic has a bug.
+
+"This is the prompt template" - so, the main task for step 1 is create the most defined version of "This is the prompt template"? Need to improve the template again and again ant try to improve the answer, correct?
+
+
+Disentangled prompt design from fine-tuning iteration processes
+Disentangled prompt design from fine-tuning iteration processes
+Not quite — there are two different things here, and it's worth separating them clearly.
+
+The prompt template is a one-time contract, not the thing you iterate on
+The template (schema fields, instruction text) is the interface between your data and the model — both at training time and at inference time. You do need to get it reasonably right, but "reasonably right" mostly means: does it cover every time_constraint shape / filter type your target questions actually need? That's a design task you largely nail down upfront (like we just did for the Beethoven case), then only revisit when you discover a genuinely new question shape it doesn't handle — not something you tweak over and over hoping for better answers.
+
+What you actually iterate on is the training data and the model's failures
+Once the schema is fixed, the real loop is:
+
+Fine-tune on your generated (question → JSON) dataset.
+Evaluate on held-out examples — feed the model questions it hasn't seen, check whether the output JSON is (a) valid against your schema and (b) semantically correct (right occupation, right entity span, right constraint type).
+Bucket the failures by category — e.g. "model mishandles relative_to_entity when the entity name has multiple words," "model conflates location and domain when both are mentioned," "model drops the occupation filter when the question has two clauses."
+Add targeted training examples for each failure category — not random new data, specifically more examples of the pattern it's getting wrong.
+Retrain, re-evaluate, repeat until failure rate on held-out data is acceptable.
+This is the "again and again" part — but it's iterating the dataset composition and coverage, driven by observed failures, not iterating the wording of the instruction text.
+
+One thing worth doing before any of that: prototype with prompting alone
+Before you generate a full fine-tuning dataset, it's worth first testing your schema design by just prompting a capable instruct model (few-shot, no fine-tuning) with the template we drafted, on a few dozen hand-picked tricky questions. This is cheap and fast, and tells you two things:
+
+Whether the schema itself is well-designed (does the model, even unfine-tuned, understand what you're asking for? If a strong general model consistently misinterprets a field, that's a signal the field definition is ambiguous, not that the model needs training).
+A rough baseline of how hard the task is, so you know whether fine-tuning is even necessary for Stage 1, or whether prompting a decent model is already good enough (since, as I mentioned earlier, extraction tasks like this are often within reach of an off-the-shelf instruct model without any fine-tuning at all).
+So: fix the schema once (revise only on genuine gaps), then treat data coverage — not prompt wording — as the thing you improve iteratively.
+
+
+

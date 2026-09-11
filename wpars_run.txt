@@ -1,0 +1,23 @@
+mkdir -p /home/denis/projects/wiki_data/run2
+  cd /home/denis/projects/wiki_data/run2
+
+  nohup /home/denis/projects/wiki/build/wpars \
+      /mnt/nfs/wiki/wikidata-20250922-all.json \
+      /home/denis/projects/wiki_data/properties.json \
+      run2.pos \
+      --classes /home/denis/projects/wiki_data/classes/select_classes.csv \
+      --dates   /home/denis/projects/wiki_data/classes/date_properties.csv \
+      --attrs   /home/denis/projects/wiki_data/classes/attribute_properties.csv \
+      > run2.log 2>&1 &
+
+  tail -f /home/denis/projects/wiki_data/run2/run2.log     # progress every ~450K items
+
+  After the last invocation
+
+  cd /home/denis/projects/wiki_data/run2
+  python3 /home/denis/projects/wiki/resolve_values.py \
+      --attributes Attributes.csv \
+      --classes    ItemClasses.csv \
+      --items      /home/denis/projects/wiki_data/fstep/Item.csv \
+      --out        values.csv
+

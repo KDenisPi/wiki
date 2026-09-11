@@ -1,0 +1,39 @@
+Let's think about the real task. I would like to use WiKi dataset (https://huggingface.co/datasets/open-index/open-wikipedia-markdown) to train model that will answer to questions like: What happened in year xxxx in music and science area? Who from scientists lived in 40x years in Gernamy? Something like other questions about people, events, etc.
+
+
+Weighing factual knowledge injection versus fine-tuning reliability challenges
+Weighing factual knowledge injection versus fine-tuning reliability challenges
+I looked at the dataset — good source, but there's an important design decision to flag before we get into dataset prep mechanics.
+
+First, a structural point worth considering
+What you're describing — "what happened in year X in music/science", "who lived in Germany in the 1400s" — is broad factual recall across a huge, sprawling knowledge base (7.1M English articles alone, 65.9M across all languages). This is a case where I'd genuinely push back on fine-tuning as the primary approach:
+
+LoRA/QLoRA fine-tuning is bad at reliably injecting large volumes of new facts. It's good at teaching style, format, behavior — "answer in this structure," "adopt this persona," "follow this reasoning pattern." It's poor at making a model reliably remember millions of discrete facts (dates, names, associations) it didn't already know, especially with adapters that only touch a small fraction of the weights. You'll get a model that sounds like it's answering confidently and is wrong a meaningful fraction of the time — which is worse than a model that admits uncertainty.
+Retrieval-augmented generation (RAG) is the standard solution to exactly this task shape: index the Wikipedia articles (chunked, embedded), and at query time retrieve the relevant passages and feed them to the model as context. The model doesn't need to "know" the fact — it reads it off the page you hand it. This is also why the dataset page itself notes Markdown is chosen partly because it's better suited for retrieval-augmented generation (RAG) where chunking by heading sections produces more coherent results. 
+huggingface
+A hybrid is often the sweet spot: RAG for the factual grounding, with fine-tuning used only to teach the model how to use retrieved context and what output format/tone to answer in — not to memorize the facts themselves.
+I'll keep going with dataset prep for fine-tuning since that's what you asked about, but wanted this on the table before you sink real time in — happy to switch to talking through a RAG pipeline instead if that changes your thinking.
+
+Dataset prep, given the source
+The dataset schema (per the page) is: id, title, markdown, url, lang, length, timestamp — the markdown field is the raw article body, not QA pairs. So there's a real transformation step between "raw Wikipedia" and "fine-tuning-ready dataset."
+
+1. Filter down from the full corpus
+You don't want all 7.1M English articles — you want ones relevant to your target domains (events, people, science, music, history). Use DuckDB directly against the hosted Parquet files (the dataset card gives this pattern) to filter by heuristics:
+
+Title/content patterns suggesting biographical or event articles (dates in categories were stripped, unfortunately — see below)
+Length thresholds (very short articles are often not useful; the dataset already filters sub-100-byte stubs)
+Caveat: this dataset strips {{Infobox}} templates and [[Category:]] tags entirely — Templates are stripped, not expanded. Infoboxes, navigation boxes, and other templates are removed entirely rather than expanded to their rendered output. This means some structured data that appears in rendered Wikipedia pages is not present in this dataset. That's a real problem for your use case specifically, since infoboxes are exactly where structured birth/death dates, nationality, and occupation live. You'll be extracting dates and facts from prose instead of structured fields, which is noisier. Worth knowing before you commit to this variant — the wikitext variant (linked from the dataset page) keeps that structured data if you need it. 
+huggingface
+
+2. Convert articles into QA pairs (the actual dataset-prep bottleneck for this task)
+Raw article text isn't fine-tuning data — you need {question, answer} or {question, answer, source} pairs. Two practical approaches:
+
+Synthetic generation: feed article chunks to a capable model (local or API) with a prompt like "generate 3-5 factual Q&A pairs from this article, focused on dates, people, and events," then collect the outputs. This is the realistic way to turn 100K+ articles into a QA dataset without manually writing them.
+
+Template-based extraction: for well-structured facts (birth/death years, nationality), regex/NER extraction into templated questions ("Who was born in {year}?" / "{name} was born in {year}."). More reliable per-fact but far less varied in phrasing, so the model may overfit to your templates rather than learning to answer naturally-phrased questions.
+
+3. Quality-control the generated pairs
+Synthetic QA generation hallucinates too — an answer generated from an article can still be wrong or unsupported by the source text. Sample and manually verify a chunk of pairs against the source markdown before trusting the full set.
+
+4. Structure for training
+Land on the same {"messages": [...]} schema we discussed — one Q&A pair per example (or per few-turn conversation), with the source article's url/title kept as metadata (not part of the training text) so you can audit which examples came from where later.

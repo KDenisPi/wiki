@@ -1,0 +1,49 @@
+  First: the premise in that spec text no longer holds
+
+  Those two paragraphs were written for the Wikipedia markdown dataset — raw article prose, where an LLM must read a chunk and invent Q&A pairs, and where hallucination is the central risk. What you actually built is a
+  structured fact database. That inverts the trade-off the spec describes:
+
+  - "Synthetic generation" was the realistic option and "template-based" the reliable but rigid one.
+  - With a DB, templates are hallucination-free by construction — every answer is a query result, not a model's reading of prose. The rigidity concern (overfitting to phrasings) is real but solvable separately.
+
+  So the shape I'd argue for is a split of duties: templates + SQL produce the facts and answers; an LLM paraphrases only the questions, never touching the answer. You get phrasing variety with zero hallucination
+  surface. That's strictly better than generating pairs from prose, and it's only available to you because of the work already done.
+
+  The decision that gates everything
+
+  "What do we need" depends entirely on what the model is for, and there are three answers:
+
+  (a) Fine-tune to memorize facts — the spec's own opening paragraph argues against this, and it was right. Millions of pairs, and the model still answers confidently-wrong a meaningful fraction of the time.
+
+  (b) RAG — then you don't need training pairs at all. You need an eval set (a few thousand verified pairs) and a retrieval index. Note your DB is a better retrieval target than article chunks for these questions: "what  happened in 1875 in music" is an aggregation, and no amount of chunk retrieval aggregates reliably.
+
+  (c) Text-to-SQL — my recommendation. Your questions are literally aggregate queries: filter by year/century, by area, by country, by occupation. The DB answers them exactly. So make the training target {question → SQL}
+  rather than {question → fact}. Consequences:
+  - Dataset size drops from millions to 5–20K pairs — a fine-tune that can actually succeed.
+  - Every pair is auto-verifiable: execute the generated SQL, compare to the reference result. No manual spot-checking of 100K pairs.
+  - New facts need no retraining. Re-run the dump pass, and the same model answers with fresh data.
+  - Failure mode is a broken query (visible, catchable) rather than a plausible lie.
+
+  A hybrid is natural later: (c) for the aggregate questions, (b) for open-ended "tell me about X" once you join to article text.
+
+  What we'd need, concretely
+
+  1. Question taxonomy → SQL templates, ~6–8 shapes: point lookup ("when was X born"), reverse lookup ("who was born in 1473"), filtered list ("German scientists in the 1400s"), period+area ("what happened in 1875 in
+  music"), aggregate ("how many composers died in the 18th century"), relational ("who composed X"). queries.sql is already the skeleton.
+  2. A notability signal — see below, this is the time-critical one.
+  3. Occupation → area mapping (science / music / art / politics). Query 7 gives the few thousand occupations that actually occur; that's a one-time classification job, cheap with an LLM.
+  4. An answer policy for the messy cases, all of which are already measured: 2.23M dates are ye Jump to bottom (ctrl+End) ↓  be rendered as exact days; 17.8K are BC; many items share a label (21 different "Symphony No.9"); list answers need a cap and a deterministic ordering.
+  5. Entity-level train/test split — split by QID, not by row, or the same person leaks across both.
+  6. Paraphrase model + budget for question variety, plus a verification harness that executes and compares.
+  7. Output schema: {"messages": [...]} with QIDs and the source SQL in metadata, never in the training text.
+
+  The time-critical item: notability
+
+  The parser extracts labels, descriptions, and claims — it ignores the sitelinks block. That leaves no way to rank items, and it will visibly wreck the dataset: "who was born in 1473" returns hundreds of people, and the sample I ran earlier surfaced "Jing Li, chemist, born 2000" — a real row, and exactly the kind of nobody that would dominate generated answers.
+
+  Sitelink count is the standard notability proxy, and it buys a second thing: the enwiki title, which is the join key to the Wikipedia markdown dataset if you later want article text for RAG.
+
+  Adding it is ~10–15 lines in parse_item(). The cost of doing it now is the ~40 minutes of run progress, versus a full re-run later or a slow post-hoc API enrichment for hundreds of thousands of items.
+
+  That's the one thing I'd decide today, while the restart is still nearly free. Everything else on the list can wait until the data lands.
+
