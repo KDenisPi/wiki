@@ -1,0 +1,22 @@
+# Build output
+build/
+cpp/build/
+
+# Third-party sources, vendored rather than tracked (rapidjson)
+thparty/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+
+# Run output: logs, caches, and the JSONL/summary files every eval and model
+# comparison writes. These are measurements of a particular run against a
+# particular database, so they go stale the moment either changes - the numbers
+# worth keeping live in commit messages instead.
+*.log
+cache/
+agent/*.jsonl
+agent/*.summary.json
