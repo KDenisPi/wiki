@@ -305,7 +305,7 @@ Sentence: Did composers Beethowen and Mahler live on the same time?
   }
 }
 
-Sentence: Who composed more symphonies, Beethowen or Mahler?
+Sentence: Who composed more symphonies, Haydn or Schuebert?
 {
   "target_type": "person",
   "answer_field": null,
@@ -317,11 +317,11 @@ Sentence: Who composed more symphonies, Beethowen or Mahler?
     "domain": "music",
     "time_constraint": null,
     "related_entity": null,
-    "compare_entities": {"entities": ["Beethowen", "Mahler"], "aspect": "work_count", "relation": "more", "work_type": "symphonies"}
+    "compare_entities": {"entities": ["Haydn", "Schuebert"], "aspect": "work_count", "relation": "more", "work_type": "symphonies"}
   }
 }
 
-Sentence: Who lived longer, Beethoven or Mahler?
+Sentence: Who lived longer, Tolstoy or Dostoevsky?
 {
   "target_type": "person",
   "answer_field": null,
@@ -333,11 +333,11 @@ Sentence: Who lived longer, Beethoven or Mahler?
     "domain": null,
     "time_constraint": null,
     "related_entity": null,
-    "compare_entities": {"entities": ["Beethoven", "Mahler"], "aspect": "age", "relation": "more"}
+    "compare_entities": {"entities": ["Tolstoy", "Dostoevsky"], "aspect": "age", "relation": "more"}
   }
 }
 
-Sentence: Were Beethoven and Mahler born in the same country?
+Sentence: Were Curie and Einstein born in the same country?
 {
   "target_type": "person",
   "answer_field": null,
@@ -349,7 +349,7 @@ Sentence: Were Beethoven and Mahler born in the same country?
     "domain": null,
     "time_constraint": null,
     "related_entity": null,
-    "compare_entities": {"entities": ["Beethoven", "Mahler"], "aspect": "location", "relation": "same"}
+    "compare_entities": {"entities": ["Curie", "Einstein"], "aspect": "location", "relation": "same"}
   }
 }
 
