@@ -138,6 +138,11 @@ BIRTH, DEATH = "P569", "P570"
 #A death year more than this after the birth year is a data error, not a life.
 MAX_LIFESPAN = 110
 
+#Relations that only a time comparison can use. age and work_count both answer
+#more/fewer/equal, so those say nothing about which was meant; these three say
+#it exactly.
+TIME_RELATIONS = ("overlap", "before", "after")
+
 TARGET_TYPES = ("person", "work", "event")
 
 
@@ -381,6 +386,18 @@ def _compare_query(compare: dict) -> str:
 
     aspect = compare.get("aspect")
     relation = compare.get("relation")
+    if relation in TIME_RELATIONS and aspect != "time":
+        #The relation names the aspect when the two disagree. "Were Tolstoy and
+        #Dostoevsky alive at the same time?" arrives as aspect "age" with
+        #relation "overlap", and "Was Beethoven born after Mozart?" as "age"
+        #with "after" - but overlap, before and after are questions about WHEN,
+        #and an age comparison can only be more, fewer or equal. The relation is
+        #the unambiguous half, so it wins.
+        #
+        #This does not work in the other direction: more/fewer/equal is shared
+        #by age and work_count, so a relation of "more" cannot say which was
+        #meant. Only the time relations identify their aspect on their own.
+        aspect = "time"
     ctes = [_person_cte("e1", entities[0]), _person_cte("e2", entities[1])]
 
     #a death year missing or absurd would make any of these comparisons lie
@@ -433,14 +450,34 @@ def _compare_query(compare: dict) -> str:
             + "SELECT " + ",\n       ".join(select) + "\nFROM e1, e2;")
 
 
-def _time_conditions(target: str, constraint: dict, ctes: list) -> list:
+def _time_conditions(target: str, constraint: dict, ctes: list,
+                     dropped: list = None) -> list:
     """Turn a time_constraint into conditions on the target's dates."""
     kind = constraint.get("type")
 
     if kind == "in_range":
         start, end = constraint.get("start_year"), constraint.get("end_year")
         if start is None or end is None:
-            raise Unsupported("in_range without both years")
+            #A range without both bounds cannot be applied, and refusing the
+            #whole query over it was costing 7 of the 13 cases the composer
+            #declined. Stage 1 emits it for "When did Einstein die?" - an
+            #in_range carrying only event "died" and no years at all - and for
+            #that sentence the gold intent is simply no constraint, so dropping
+            #it IS the right answer rather than a salvage. The other filters
+            #still narrow the query, and the comment says what went missing.
+            #
+            #A half-open range would be real information, and is deliberately
+            #not built: across 288 intents from two eval runs, in_range arrives
+            #with both years or with neither, never with one. Guessing at a
+            #shape nothing produces would be untested code on a live path -
+            #the first draft of it filtered on any event after the start year
+            #while still printing the earliest, answering "works from 1900 on"
+            #with a manuscript from 973.
+            if dropped is not None:
+                which = ("no years" if start is None and end is None
+                         else "only one year")
+                dropped.append(f"time_constraint in_range with {which}")
+            return []
         if target == "person":
             #Which date the window applies to. "Who was born in 1920" and "which
             #composers were active in 1920" are different questions and were
@@ -551,10 +588,21 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         raise Unsupported(f"target_type {target!r}")
 
     filters = intent.get("filters") or {}
-    if filters.get("compare_entities"):
+    compare = filters.get("compare_entities")
+    if compare and len(compare.get("entities") or []) < 2:
+        #A comparison needs two sides. Stage 1 sometimes emits a one-entity
+        #comparison beside a time_constraint that is already correct - "Which
+        #composers lived at the same time as Beethoven?" arrives as
+        #relative_to_entity(overlap, Beethoven) AND a comparison of
+        #["Beethowen"] alone. The constraint answers the question and the
+        #comparison is a leftover, so dropping it leaves exactly the gold
+        #intent rather than an approximation of it.
+        filters = dict(filters, compare_entities=None)
+        compare = None
+    if compare:
         #a comparison answers with one row about two entities, not a filtered
         #list, so it is built separately and returned whole
-        sql = _compare_query(filters["compare_entities"])
+        sql = _compare_query(compare)
         name = filters.get("name")
         if name:
             #A comparison names its own entities, so a name filter beside one
@@ -564,7 +612,7 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             #not in the sentence at all. The name cannot be applied to a
             #comparison, but its presence is the evidence that the comparison
             #was invented, so it is recorded rather than silently discarded.
-            entities = filters["compare_entities"].get("entities") or []
+            entities = compare.get("entities") or []
             note = ("redundant" if any(str(name).lower() in str(e).lower()
                                        or str(e).lower() in str(name).lower()
                                        for e in entities)
@@ -663,7 +711,7 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         where += _related_conditions(target, filters["related_entity"])
 
     if filters.get("time_constraint"):
-        where += _time_conditions(target, filters["time_constraint"], ctes)
+        where += _time_conditions(target, filters["time_constraint"], ctes, dropped)
 
     if not where:
         raise Unsupported("no filters to constrain the query")
@@ -692,8 +740,13 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         #so projecting the earliest of all of them lists a 15th-century carol
         #under "musical works of the 18th century" - the row matches, the year
         #printed next to it does not.
+        #Both bounds are needed to narrow the projection to the window. An
+        #in_range missing either one is dropped or read as open-ended by
+        #_time_conditions above, and there is no window left to project into.
         constraint = filters.get("time_constraint") or {}
-        if constraint.get("type") == "in_range":
+        if (constraint.get("type") == "in_range"
+                and constraint.get("start_year") is not None
+                and constraint.get("end_year") is not None):
             year = (f"(SELECT min(e.year) FROM events e WHERE e.qid = i.qid"
                     f" AND e.year BETWEEN {int(constraint['start_year'])}"
                     f" AND {int(constraint['end_year'])})")
@@ -784,6 +837,26 @@ def _self_check(db_path: str) -> int:
         ("unknown domain is dropped, not applied",
          intent("work", domain="mathematics",
                 related_entity={"relation": "creates", "entity_mention": "Isaac Newton"})),
+        #the three malformed shapes stage 1 emits that used to be refused
+        #outright, each of which cost the whole query rather than one filter
+        ("in_range with no years is dropped, not refused",
+         intent("person", answer="time", name="Albert Einstein",
+                time_constraint={"type": "in_range", "start_year": None,
+                                 "end_year": None, "precision": None,
+                                 "event": "died"})),
+        ("a one-entity comparison is dropped, leaving the real constraint",
+         intent("person", occupation="composer", domain="music",
+                time_constraint={"type": "relative_to_entity",
+                                 "relation": "overlap",
+                                 "entity_mention": "Beethoven"},
+                compare_entities={"entities": ["Beethowen"], "aspect": "time",
+                                  "relation": "before"})),
+        ("'overlap' means a time comparison even when the aspect says age",
+         intent("person", compare_entities={"entities": ["Tolstoy", "Dostoevsky"],
+                                            "aspect": "age", "relation": "overlap"})),
+        ("'after' means a time comparison even when the aspect says age",
+         intent("person", compare_entities={"entities": ["Beethoven", "Mozart"],
+                                            "aspect": "age", "relation": "after"})),
     ]
 
     try:
