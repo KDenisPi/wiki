@@ -369,6 +369,7 @@ public:
         P19; place of birth
         P20; place of death
         P937; work location
+        P551; residence
 
         Area and subject:
         P106; occupation
@@ -391,13 +392,25 @@ public:
         P276; location
         P710; participant
         P1344; participant in
+
+        Language and origin:
+        P407; language of work or name
+        P495; country of origin
+        P1412; languages spoken, written or signed
+        P6886; writing language
+
+        A life outside the work:
+        P69; educated at
+        P166; award received
         */
 
         std::vector<pID> v_attribute_props = {
-            "P27", "P19", "P20", "P937",
+            "P27", "P19", "P20", "P937", "P551",
             "P106", "P101", "P136", "P921", "P7937",
             "P50", "P86", "P170", "P175", "P676",
-            "P17", "P276", "P710", "P1344"
+            "P17", "P276", "P710", "P1344",
+            "P407", "P495", "P1412", "P6886",
+            "P69", "P166"
         };
 
         props->load_attribute_property(v_attribute_props);

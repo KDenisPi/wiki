@@ -7,13 +7,27 @@
 # attributes are kept is decided while the dump is parsed, so a new property
 # cannot be backfilled from the CSVs of an earlier run.
 #
-# This run adds P7937 "form of creative work" - the property carrying the FORM
-# of a work (novel, poem, play, opera, symphony). Nothing else in the allowlist
-# says what kind of thing a work is: P31 covers objects and events (painting,
-# film, battle) and arrives through select_classes.csv, but the textual and
-# musical forms live only in P7937. Q188709 "Symphony No. 5" holds P7937=Q9734
-# and no other statement of its kind, which is why 8 of Beethoven's 9
-# symphonies could not be found by "Beethoven symphonies" at all.
+# This run adds seven attribute properties, taking the allowlist from 18 to 25.
+# Each was measured first over the 360 most notable items the extract keeps -
+# 120 each of person, work and event - as the share carrying it on Wikidata,
+# the same check that justified P7937 before run4:
+#
+#   P407  language of work     78% of works    "French literature" is dropped
+#   P495  country of origin    62% of works     today: that sentence and the
+#   P1412 languages spoken     99% of people    Russian one return the SAME rows
+#   P6886 writing language     79% of people    because nothing distinguishes them
+#   P551  residence            68% of people   answer_field "places" approximates
+#                                               this from citizenship/birth/death
+#   P69   educated at          77% of people   question families the extract
+#   P166  award received       67% of people    cannot answer at all today
+#
+# P1412 and P6886 matter where citizenship is actively wrong: Nabokov wrote in
+# English and Russian, Conrad in English, and P27 says neither.
+#
+# The previous run added P7937 "form of creative work" and seeded painting in
+# build_class_closure.py. Both worked: P7937 went from 0 rows to 303,706, all
+# nine Beethoven symphonies became findable by kind, and the art domain went
+# from 3 items to 708,251.
 #
 # The previous run existed for a different reason, and its check survives in
 # preflight: Wikidata moved labels that read the same in every language into
@@ -47,20 +61,20 @@
 #   ./rerun_extract.sh                  # everything, in order
 #   ./rerun_extract.sh preflight        # just the checks
 #   ./rerun_extract.sh parse            # or values / load / verify
-#   OUT_DIR=/data/run4 ./rerun_extract.sh
+#   OUT_DIR=/data/run5 ./rerun_extract.sh
 #
 # Unattended:
 #   nohup ./rerun_extract.sh > ~/rerun.log 2>&1 &
 #   tail -f ~/rerun.log
 #
 # Nothing here writes to the current run directory or its database, so the
-# question pipeline keeps working off run2 while this runs.
+# question pipeline keeps working off run4 while this runs.
 
 set -uo pipefail
 
 WIKI=${WIKI:-/home/denis/projects/wiki}
-OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run4}
-OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run3}
+OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run5}
+OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run4}
 DUMP=${DUMP:-/mnt/nfs/wiki/wikidata-20250922-all.json}
 PROPS=${PROPS:-/home/denis/projects/wiki_data/properties.json}
 CONFIG=${CONFIG:-/home/denis/projects/wiki_data/classes}
@@ -182,9 +196,28 @@ def counts(path):
         FROM items''').fetchone()
     spot = {q: con.execute('SELECT "label" FROM items WHERE qid = ?', [q]).fetchone()
             for q in ("Q762", "Q76", "Q2831", "Q12418")}
-    #what this run is for: P7937 rows at all, and whether they reach the case
-    #that prompted it - Beethoven's nine symphonies, none of which could be
-    #found by kind before, because only P7937 says they are symphonies
+    #what this run is for: does each new property have rows at all, and do the
+    #two that motivated it reach their cases - a novel that can be told apart
+    #by language, and a person whose residence is stated rather than inferred
+    added = {}
+    for pid in ("P407", "P495", "P1412", "P6886", "P551", "P69", "P166"):
+        added[pid] = con.execute("SELECT count(*) FROM attributes"
+                                 " WHERE property = ?", [pid]).fetchone()[0]
+    #"What novels exist in French literature?" and the Russian version of the
+    #same sentence returned identical rows before this: nothing said which
+    french = con.execute("""
+        SELECT count(*) FROM items i
+        WHERE EXISTS (SELECT 1 FROM attributes a JOIN value_items v ON v.qid = a."value"
+                      WHERE a.qid = i.qid AND a.property = 'P407'
+                        AND regexp_matches(v."label", '(?i)^French$'))
+          AND EXISTS (SELECT 1 FROM attributes a JOIN value_items v ON v.qid = a."value"
+                      WHERE a.qid = i.qid AND a.property IN ('P921','P136','P7937')
+                        AND regexp_matches(v."label", '(?i)\\bnovel'))""").fetchone()[0]
+    #Beethoven lived in Bonn and Vienna; P551 should say so directly instead of
+    #it being reconstructed from citizenship, birth, death and work location
+    lived = con.execute("""
+        SELECT count(*) FROM attributes a WHERE a.qid = 'Q255' AND a.property = 'P551'
+        """).fetchone()[0]
     forms = con.execute("SELECT count(*) FROM attributes"
                         " WHERE property = 'P7937'").fetchone()[0]
     symphonies = con.execute("""
@@ -196,23 +229,31 @@ def counts(path):
                       WHERE a.qid = i.qid AND a.property = 'P86'
                         AND regexp_matches(v."label", '(?i)\\bBeethoven'))""").fetchone()[0]
     con.close()
-    return row, spot, forms, symphonies
+    return row, spot, forms, symphonies, added, french, lived
 
 new_counts = counts(new)
 if new_counts is None:
     raise SystemExit(f"no database at {new}")
-(items, no_label, values_no_label), spot, forms, symphonies = new_counts
+((items, no_label, values_no_label), spot, forms, symphonies,
+ added, french, lived) = new_counts
 print(f"  items                     {items:,}")
 print(f"  items with no label       {no_label:,}  ({no_label / items:.1%})")
 print(f"  attribute values no label {values_no_label:,}")
 
+print("  properties added by this run:")
+for pid, n in added.items():
+    print(f"    {pid:<8} {n:>12,}   {'OK' if n else 'EMPTY - not in the allowlist?'}")
+print(f"  French-language novels    {french:,}"
+      f"   {'OK' if french else 'LOW - P407 not reaching works'}")
+print(f"  Beethoven P551 residence  {lived} statement(s)"
+      f"   {'OK' if lived else 'LOW - expected Bonn/Vienna'}")
 print(f"  P7937 rows                {forms:,}")
 print(f"  Beethoven symphonies      {symphonies} findable by kind"
       f"   {'OK' if symphonies >= 9 else 'LOW - expected 9'}")
 
 old_counts = counts(old)
 if old_counts:
-    (o_items, o_no_label, o_values), _, o_forms, o_symphonies = old_counts
+    (o_items, o_no_label, o_values), _, o_forms, o_symphonies, _, _, _ = old_counts
     print(f"  previous run              {o_items:,} items, {o_no_label:,} unlabelled,"
           f" {o_values:,} values unlabelled")
     print(f"  labels recovered          {o_no_label - no_label:,}")
