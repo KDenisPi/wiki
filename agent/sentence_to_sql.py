@@ -67,6 +67,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "AI_agent
 
 from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 
+from answer_text import describe as describe_answer  # noqa: E402 - sibling module
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
 from model_retry import (  # noqa: E402 - sibling module
     DEFAULT_RETRY_PENALTY,
@@ -214,7 +215,8 @@ def run_sql(db_path: str, sql: str) -> dict:
         import duckdb
     except ImportError:
         logger.warning("duckdb package not installed - skipping execution of:\n%s", sql)
-        return {"status": "unavailable", "error": None, "row_count": None}
+        return {"status": "unavailable", "error": None, "row_count": None,
+                "columns": None, "rows": None}
 
     started = time.perf_counter()
     try:
@@ -230,7 +232,8 @@ def run_sql(db_path: str, sql: str) -> dict:
             connection.close()
     except Exception as e:
         logger.warning("duckdb(%s) failed in %.2fs: %s", db_path, time.perf_counter() - started, e)
-        return {"status": "failed", "error": str(e), "row_count": None}
+        return {"status": "failed", "error": str(e), "row_count": None,
+                "columns": None, "rows": None}
 
     logger.info(
         "duckdb(%s) ok in %.2fs - %d row(s), columns=%s",
@@ -238,7 +241,8 @@ def run_sql(db_path: str, sql: str) -> dict:
     )
     for row in rows[:10]:
         logger.info(row)
-    return {"status": "success", "error": None, "row_count": len(rows)}
+    return {"status": "success", "error": None, "row_count": len(rows),
+            "columns": columns, "rows": rows}
 
 
 def compose_sql(intent: str, limit: int):
@@ -458,6 +462,14 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
 
     logger.info("%sSQL (%s):\n%s", label, source, sql)
     db_result = run_sql(args.db, sql)
+
+    #the rows are logged above as tuples, which is what a query returns and not
+    #what was asked. One line of English beside them costs nothing and is the
+    #only part of this output a person reads first.
+    if db_result["status"] == "success":
+        answer = describe_answer(db_result["columns"], db_result["rows"], args.limit)
+        if answer:
+            logger.info("%sanswer: %s", label, answer)
 
     if completion is not None:
         #only the model's own SQL belongs in the training log as a completion
