@@ -75,6 +75,16 @@ ANSWER_PLACE_PROPS = {
     "event":  ("P17", "P276"),
 }
 
+#And "which countries did Beethoven live in" is a third case, neither of those.
+#It wants every place a life touched, which is what PLACE_PROPS already
+#collects for filtering - the same four properties, read out instead of
+#matched against. P551 "residence" is the property that would say this
+#directly and the extract has none of it: 0 rows, because it is not in the
+#allowlist. So the answer is assembled from citizenship, birth, death and work
+#location, which is why it is called "places" and not "residence" - it reports
+#where the record puts them, not where they lived.
+ANSWER_PLACES_PROPS = PLACE_PROPS
+
 #"label" is quoted because DuckDB treats it as a keyword in some positions.
 #They are names rather than inline strings so that f-strings below stay free of
 #backslashes, which Python 3.11 rejects inside an expression part.
@@ -563,7 +573,7 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         return sql
 
     answer_field = intent.get("answer_field")
-    if answer_field not in (None, "time", "location"):
+    if answer_field not in (None, "time", "location", "places"):
         raise Unsupported(f"answer_field {answer_field!r}")
 
     ctes, where = [], []
@@ -659,15 +669,17 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         raise Unsupported("no filters to constrain the query")
 
     label = 'coalesce(i."label", i.label_ru)'
-    place_props = ", ".join(_lit(p) for p in ANSWER_PLACE_PROPS[target])
+    chosen = (ANSWER_PLACES_PROPS if answer_field == "places"
+              else ANSWER_PLACE_PROPS)[target]
+    place_props = ", ".join(_lit(p) for p in chosen)
     places = (f"(SELECT string_agg(DISTINCT {V_LABEL}, ', ') FROM attributes a"
               f" JOIN value_items v ON v.qid = a.\"value\""
               f" WHERE a.qid = i.qid AND a.property IN ({place_props}))")
 
     sitelinks = "(SELECT sitelinks FROM sites s WHERE s.qid = i.qid)"
 
-    if answer_field == "location":
-        select = [f"{label} AS {target}", f"{places} AS location"]
+    if answer_field in ("location", "places"):
+        select = [f"{label} AS {target}", f"{places} AS {answer_field}"]
         order = ""
     elif target == "person":
         select = [f"{label} AS person",

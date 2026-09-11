@@ -187,11 +187,15 @@ def describe(columns, rows, limit=None):
             return _compare_many(columns, rows[0])
         return _compare_two(get, rows[0])
 
-    if "location" in columns:
-        name, place = rows[0][0], rows[0][columns.index("location")]
-        if place is None:
-            return f"{name} - no place recorded in the extract."
-        return f"{name} - {place}."
+    for field in ("location", "places"):
+        if field in columns:
+            name, place = rows[0][0], rows[0][columns.index(field)]
+            if place is None:
+                return f"{name} - no place recorded in the extract."
+            #"places" is every place a life touched, so it arrives as a
+            #comma-joined list and reads as one; "location" is a single place
+            return (f"{name} - {_join(place.split(', '))}." if field == "places"
+                    else f"{name} - {place}.")
 
     if columns[0] in PLURALS or "born" in columns or "year" in columns:
         return _listing(columns, rows, limit)
@@ -247,6 +251,9 @@ def _self_check() -> int:
         (["person", "location", "sitelinks"],
          [("Albert Einstein", "Ulm", 200)],
          "Albert Einstein - Ulm."),
+        (["person", "places", "sitelinks"],
+         [("Ludwig van Beethoven", "Electorate of Cologne, Austrian Empire, Bonn", 9)],
+         "Ludwig van Beethoven - Electorate of Cologne, Austrian Empire and Bonn."),
         (["work", "year", "sitelinks"], [], "Nothing in the extract matches that."),
         #BC years reach here as negative numbers, from items like the Darius Painter
         (["person", "born", "died", "sitelinks"], [("Darius Painter", -400, -320, 9)],

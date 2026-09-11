@@ -5,16 +5,22 @@ Convert the user's question into a structured JSON query intent. Extract:
 - answer_field: which single attribute of the matched target to return, or null:
   "time"     -> the target's date (work: creation/publication year; event: start/end year;
                 person: birth/death year)
-  "location" -> the target's place (work: place of origin; event: where it happened;
-                person: birthplace)
+  "location" -> the ONE place the question asks about (work: place of origin;
+                event: where it happened; person: birthplace)
+  "places"   -> EVERY place a person's life touched: citizenship, birth, death, where
+                they worked. Only for a person
   null       -> return the matching entities themselves (the default)
   Use a non-null answer_field only when the sentence asks for that attribute as the ANSWER
   rather than using it to filter results. Decide from the question word:
     "When", "What year", "In what year", "How long ago" -> "time"
-    "Where" -> "location"
+    "Where was X born / built / held" -> "location"
+    "Where did X live", "which countries did X live in", "where has X worked" -> "places"
     "Who", "Which", "What ...", "How many", or any yes/no comparison -> null
   (e.g. "When did Beethoven write Symphony 5?" -> "time"; "Where was Einstein born?" -> "location";
   "Who wrote Symphony 5?" -> null, because the person is the thing returned, not an attribute.)
+  "location" and "places" differ by how many answers the question wants: one defining place,
+  or a whole life's worth. "Where was Einstein born?" is "location" and answers Ulm; "Where did
+  Einstein live?" is "places" and answers Ulm, Bern, Zurich, Prague, Berlin, Princeton.
 - filters.name: the literal text span naming the target entity directly, or null. Use this when
   the sentence names the specific target itself (e.g. the work "Symphony 5"), as opposed to
   describing it only by category/occupation/domain/time. This is the target entity; a
@@ -81,7 +87,8 @@ RELATIONSHIPS
 FIELD-TO-FILTER MAPPING (stage1 JSON output)
 - answer_field: leave null for the usual case of returning the matching entities (a list of people,
   events, or works). Set it only when the sentence asks for one attribute OF a target as the answer:
-  "time" for "when / what year", "location" for "where". The attribute it names must NOT also be put
+  "time" for "when / what year", "location" for "where was it born/built/held", "places" for
+  "where did this person live". The attribute it names must NOT also be put
   in a filter — answer_field is the output, filters are the input. answer_field is most often paired
   with filters.name (the target is a specific named entity whose date/place you're asked to return),
   e.g. "When did Beethoven write Symphony 5?" -> answer_field "time".
@@ -279,6 +286,22 @@ Sentence: Where was Albert Einstein born?
   "answer_field": "location",
   "filters": {
     "name": "Albert Einstein",
+    "occupation": null,
+    "subject": null,
+    "location": null,
+    "domain": null,
+    "time_constraint": null,
+    "related_entity": null,
+    "compare_entities": null
+  }
+}
+
+Sentence: On which countries did Beethoven live during his life?
+{
+  "target_type": "person",
+  "answer_field": "places",
+  "filters": {
+    "name": "Beethoven",
     "occupation": null,
     "subject": null,
     "location": null,
