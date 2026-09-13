@@ -134,6 +134,52 @@ OCCUPATION_AREAS = {
     "literature": "literature", "writer": "literature", "writers": "literature",
     "author": "literature", "authors": "literature",
 }
+
+#A country's leaders, which no single P106 label names. The obvious words are
+#the wrong instrument twice over. P39 "position held" is where "President of
+#France" lives and the extract has none of it - 0 rows - so a presidency
+#cannot be asked for directly at all; and matching the title words by word
+#collects race queens (834), drag queens (569), university presidents (321)
+#and lords of the manor (1,115). Matching the whole label exactly collects
+#the 53 queens and 95 presidents that are meant instead.
+#
+#Measured against people the encyclopaedia agrees are country leaders, the
+#labels that actually carry the meaning are the offices and the standings,
+#not the titles: Peter the Great is ruler and statesperson, Louis XV monarch,
+#Charlemagne sovereign and monarch, Churchill head of government and
+#statesperson, Napoleon all of them at once.
+#
+#"politician" is in it, which looks wrong at first: it is the widest label
+#here by two orders of magnitude, 712,787 people, and a local councillor
+#carries it. Left out, the group is 13,755 people instead of 723,929 - and it
+#answers "political leaders in Russia in the 16th century" without Ivan the
+#Terrible, Boris Godunov or Feodor I, because the encyclopaedia files all
+#three as politician and nothing else. Yeltsin is politician, master builder
+#and civil engineer; Lenin politician, writer, lawyer. The titles are the rare
+#labels and the plain one carries the famous cases.
+#What keeps it from swamping the answer is that nobody asks for leaders alone:
+#the same question with its place and its century is 25 rows with politician
+#and 13 without. A question that really does ask for every leader who ever
+#lived deserves 723,929 rows or a refusal, not a tidy wrong answer.
+LEADER_OCCUPATIONS = (
+    "politician",                                          # 712,787
+    "monarch", "sovereign", "ruler", "statesperson",       # 3,119 / 1,984 / 1,486 / 6,239
+    "head of state", "head of government", "regent",       # 24 / 21 / 345
+    "emperor", "king", "queen", "tsar", "president",       # 48 / 532 / 53 / 5 / 95
+    "prime minister", "chancellor", "consul", "lord",      # 19 / 526 / 467 / 153
+    "prince", "sultan", "caliph", "khan", "viceroy",       # 54 / 55 / 76 / 42 / 16
+    "duke", "shah", "pharaoh",                             # 11 / 7 / 3
+)
+
+#The words a sentence uses for that group. "leader" alone matches 12,503
+#people by word - military leaders, religious leaders, labor leaders - which
+#is a different question from the one being asked.
+OCCUPATION_GROUPS = {
+    "leader": LEADER_OCCUPATIONS, "leaders": LEADER_OCCUPATIONS,
+    "country leader": LEADER_OCCUPATIONS, "country leaders": LEADER_OCCUPATIONS,
+    "head of state": LEADER_OCCUPATIONS, "heads of state": LEADER_OCCUPATIONS,
+    "ruler": LEADER_OCCUPATIONS, "rulers": LEADER_OCCUPATIONS,
+}
 #What a thing is about, or what form it takes. P921 and P136 say what a work is
 #ABOUT; P7937 says what it IS, and it is the only one of the three that does -
 #nothing else in the extract carries the textual and musical forms. It is worth
@@ -740,10 +786,17 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         #item's own label
         occupation = str(filters["occupation"]).strip().lower()
         area = OCCUPATION_AREAS.get(occupation)
+        group = OCCUPATION_GROUPS.get(occupation)
         if area:
             #"scientists" is 2,039 professions, not one label
             where.append(_occupation_area_exists(area))
             areas_applied.add(area)
+        elif group:
+            #and "leaders" is a named handful, matched whole so that a race
+            #queen is not one of them
+            labels = ", ".join(_lit(g) for g in group)
+            where.append(_attribute_exists((OCCUPATION_PROP,),
+                                           f"lower({V_LABEL}) IN ({labels})"))
         else:
             where.append(_attribute_exists((OCCUPATION_PROP,),
                                            _word_match(V_LABEL, filters['occupation'])))
