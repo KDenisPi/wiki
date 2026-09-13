@@ -709,6 +709,12 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         #else, and an item with no class at all still passes.
         where.append(f"NOT EXISTS ({PERSON_CLASS}{_lit('%person%')})")
 
+    #Everything above is the target-type guard, which every query carries and
+    #which constrains nothing the sentence asked for. What follows is the
+    #sentence itself, and the count is kept so that a query with none of it
+    #can be told apart from a query with some.
+    guard_only = len(where)
+
     if filters.get("name"):
         name = filters["name"]
         where.append(f"({_title_match(I_LABEL, name)}"
@@ -779,8 +785,17 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     if filters.get("time_constraint"):
         where += _time_conditions(target, filters["time_constraint"], ctes, dropped)
 
-    if not where:
-        raise Unsupported("no filters to constrain the query")
+    if len(where) <= guard_only:
+        #Nothing the sentence said survived - every filter was malformed and
+        #dropped, or there were none to begin with. This used to test "not
+        #where", which no query can satisfy because the target-type guard is
+        #always in it, so the refusal never fired and the answer came back as
+        #every person in the extract sorted by birth year: "Russia leaders
+        #lived on the same time with Isaac Newton?" was answered with Mtoto,
+        #76000 BC. Listing the whole table is not a worse answer than refusing,
+        #it is a confident one, which is worse.
+        raise Unsupported("nothing in the sentence survived as a filter: "
+                          + ("; ".join(dropped) if dropped else "no filters given"))
 
     label = 'coalesce(i."label", i.label_ru)'
     chosen = (ANSWER_PLACES_PROPS if answer_field == "places"
