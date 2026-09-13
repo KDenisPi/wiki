@@ -661,7 +661,22 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         #["Beethowen"] alone. The constraint answers the question and the
         #comparison is a leftover, so dropping it leaves exactly the gold
         #intent rather than an approximation of it.
-        filters = dict(filters, compare_entities=None)
+        #But when there is no constraint beside it, that leftover is the only
+        #thing the sentence said about time, and dropping it answered "which
+        #Russia leaders lived on the same time with Isaac Newton" with every
+        #Russian in the extract, Fyodor I of 950 at the top. One entity and a
+        #time relation is precisely what relative_to_entity means, so it is
+        #promoted into one rather than discarded.
+        entities = compare.get("entities") or []
+        relation = compare.get("relation")
+        if (entities and relation in TIME_RELATIONS
+                and not filters.get("time_constraint")):
+            filters = dict(filters, compare_entities=None,
+                           time_constraint={"type": "relative_to_entity",
+                                            "relation": relation,
+                                            "entity_mention": entities[0]})
+        else:
+            filters = dict(filters, compare_entities=None)
         compare = None
     if compare:
         #a comparison answers with one row about two entities, not a filtered
