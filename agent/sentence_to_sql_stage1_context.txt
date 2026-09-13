@@ -125,7 +125,11 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
   "Albert Einstein". Preserve exact spelling. Leave null when the target is described by
   occupation/domain/location/time instead of by name (the open-ended retrieval case). Do not confuse
   it with related_entity: name is the target itself; related_entity is a different, linked entity.
-- filters.occupation: only meaningful when target_type = "person"
+- filters.occupation: only meaningful when target_type = "person". Free text, singular and
+  lowercased, and never limited to the arts and sciences - "leader", "politician", "general",
+  "athlete" are occupations as much as "composer". The null rule below is for domain only: a
+  sentence with no domain tag still has its occupation ("politicians in Russia" -> occupation
+  "politician", domain null).
 - filters.location: person -> birthplace/nationality; event -> where it happened; work -> place of origin
 - filters.domain: applies to any target_type, and is a closed vocabulary of six tags — art, event,
   literature, music, person, science. It is not free text: the knowledge base stores exactly
