@@ -239,7 +239,10 @@ def run_sql(db_path: str, sql: str) -> dict:
         "duckdb(%s) ok in %.2fs - %d row(s), columns=%s",
         db_path, time.perf_counter() - started, len(rows), columns,
     )
-    for row in rows[:10]:
+    #every row, not the first ten - the answer sentence below names them all,
+    #and a log that stops at ten makes the two disagree about what was found.
+    #The row limit the caller passed is what bounds both.
+    for row in rows:
         logger.info(row)
     return {"status": "success", "error": None, "row_count": len(rows),
             "columns": columns, "rows": rows}
