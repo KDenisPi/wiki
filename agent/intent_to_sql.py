@@ -59,10 +59,16 @@ CREATOR_PROPS = ("P50", "P86", "P170", "P175", "P676")
 
 #Where an item is, by what the place means for that kind of item. Filtering is
 #deliberately broad - "scientists in Germany" should accept citizenship or
-#birthplace or where they worked.
+#birthplace or where they worked. run5 added two more: P495 "country of
+#origin" is what makes "Russian novels" a question with an answer at all -
+#P17/P276 match one work, P495 matches 139 - and P551 "residence" catches the
+#people a record puts somewhere without making them citizens of it (1,855
+#composers in Vienna by the other four, 1,871 with it). P495 is left off
+#events on purpose: it sits on 305,851 art/literature/music items and 5,829
+#event ones, and on an event it means provenance rather than where it happened.
 PLACE_PROPS = {
-    "person": ("P27", "P19", "P20", "P937"),   # citizenship, birth, death, work
-    "work":   ("P17", "P276"),                 # country, location
+    "person": ("P27", "P19", "P20", "P937", "P551"),   # citizenship, birth, death, work, residence
+    "work":   ("P17", "P276", "P495"),                 # country, location, country of origin
     "event":  ("P17", "P276"),
 }
 
@@ -76,14 +82,25 @@ ANSWER_PLACE_PROPS = {
 }
 
 #And "which countries did Beethoven live in" is a third case, neither of those.
-#It wants every place a life touched, which is what PLACE_PROPS already
-#collects for filtering - the same four properties, read out instead of
-#matched against. P551 "residence" is the property that would say this
-#directly and the extract has none of it: 0 rows, because it is not in the
-#allowlist. So the answer is assembled from citizenship, birth, death and work
-#location, which is why it is called "places" and not "residence" - it reports
-#where the record puts them, not where they lived.
-ANSWER_PLACES_PROPS = PLACE_PROPS
+#It wants every place a life touched, read out instead of matched against.
+#It used to be an alias for PLACE_PROPS and is now spelled out, because the
+#two sets stopped agreeing when run5 brought P551 in. Residence is good enough
+#to filter on and wrong to answer with: its values are cities and buildings,
+#not countries - Vienna 13,682 rows, Praha XII 8,040, and Beethoven's one
+#statement is "Beethoven House". Only 3.3% of P551 rows point at a sovereign
+#state. So a person's places still come from citizenship, birth, death and
+#work location, which is why it is called "places" and not "residence" - it
+#reports where the record puts them, not where they lived. Works keep P495,
+#which is country-grained where residence is not: 301,316 of its 311,044 rows
+#point at something classed "country". The tail is small enough to live with
+#- Paris appears as the country of origin of three works, Saint Petersburg of
+#two - and it is a place either way, so it only misreads as a country when the
+#question asked for one.
+ANSWER_PLACES_PROPS = {
+    "person": ("P27", "P19", "P20", "P937"),   # the country-grained four
+    "work":   ("P17", "P276", "P495"),
+    "event":  ("P17", "P276"),
+}
 
 #"label" is quoted because DuckDB treats it as a keyword in some positions.
 #They are names rather than inline strings so that f-strings below stay free of
