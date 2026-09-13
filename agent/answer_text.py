@@ -138,7 +138,14 @@ def _compare_many(columns, row) -> str:
 
 
 def _listing(columns, rows, limit=None) -> str:
-    """A listing question: how many, and the first few by name."""
+    """A listing question: how many, and every one of them by name.
+
+    All of them, not a sample. "Which symphonies did Beethoven write" is a
+    question about which ones, and naming three of fifteen answered how many
+    instead. The row limit the caller passed is what bounds the length - the
+    listing reports what the query returned, and someone who wants a shorter
+    answer asks for fewer rows.
+    """
     target = columns[0]
     count = len(rows)
     #one row is one person, not one people
@@ -148,7 +155,7 @@ def _listing(columns, rows, limit=None) -> str:
     total = f"{count}+" if limit and count >= limit else f"{count}"
 
     shown = []
-    for row in rows[:3]:
+    for row in rows:
         name = row[0]
         if "born" in columns:
             detail = _life(row[columns.index("born")], row[columns.index("died")])
@@ -159,10 +166,7 @@ def _listing(columns, rows, limit=None) -> str:
             detail = None
         shown.append(f"{name} ({detail})" if detail else str(name))
 
-    head = _join(shown) if count <= 3 else ", ".join(shown)
-    if count > 3:
-        return f"{total} {noun}: {head} and {count - 3} more."
-    return f"{total} {noun}: {head}."
+    return f"{total} {noun}: {_join(shown)}."
 
 
 def describe(columns, rows, limit=None):
@@ -244,7 +248,7 @@ def _self_check() -> int:
          [("Symphony No. 1", 1799, 40), ("Symphony No. 2", 1801, 38),
           ("Symphony No. 3", 1803, 55), ("Symphony No. 4", 1806, 33)],
          "4 works: Symphony No. 1 (1799), Symphony No. 2 (1801),"
-         " Symphony No. 3 (1803) and 1 more."),
+         " Symphony No. 3 (1803) and Symphony No. 4 (1806)."),
         (["person", "born", "died", "sitelinks"],
          [("Hermann Zoestius", 1420, 1480, 3)],
          "1 person: Hermann Zoestius (1420-1480)."),
