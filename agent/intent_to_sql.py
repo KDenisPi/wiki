@@ -602,6 +602,14 @@ def _related_conditions(target: str, related: dict) -> list:
     mention = related.get("entity_mention")
     if not mention:
         raise Unsupported("related_entity without entity_mention")
+    #"Who painted the Mona Lisa?" reaches here as "the Mona Lisa" and matched
+    #five people, none of them Leonardo; the same mention without the article
+    #matches him first. The prompt asks stage 1 not to normalise a mention and
+    #it is right not to - an article carried in from the sentence is not part
+    #of the title, so it comes off here instead. Titles that own their article
+    #lose nothing: matching is by word, so "Magic Flute" still finds "The
+    #Magic Flute".
+    mention = re.sub(r"(?i)^(the|a|an)\s+", "", str(mention).strip()) or mention
 
     if relation == "creates":
         if target == "work":
