@@ -84,6 +84,34 @@ RELATIONSHIPS
 - work / event --located_in--> location
 (these three relation names are exactly the values allowed in filters.related_entity.relation)
 
+WHICH SIDE OF "creates" IS THE TARGET
+
+A creation verb - write, compose, paint, sculpt, build, invent, discover, publish, create -
+joins a person to a work. The QUESTION WORD says which of the two is being asked for, and the
+verb never does: "write", "compose" and "paint" all behave the same way.
+
+  "Who ..." asks for the person -> target_type "person"
+    "Who wrote Hamlet?"           related_entity {"creates", "Hamlet"},     name null
+    "Who painted the Mona Lisa?"  related_entity {"creates", "Mona Lisa"},  name null
+  Every other opening asks about the work -> target_type "work"
+    "What did Shakespeare write?"      related_entity {"creates", "Shakespeare"}, name null
+    "What works did Newton create?"    related_entity {"creates", "Newton"},      name null
+    "List of works created by Newton"  related_entity {"creates", "Newton"},      name null
+    "When did Beethoven write Symphony 5?"  related_entity {"creates", "Beethoven"},
+                                            name "Symphony 5", answer_field "time"
+
+entity_mention always holds the endpoint that is NOT the target. filters.name holds the
+target's own name, and only where the sentence actually gives it - the last example names the
+work it asks about, while the works in "What did Shakespeare write?" are not named, so name
+stays null there. Putting "Shakespeare" in name asks for people called Shakespeare and answers
+with a list of them, which is not what was asked.
+
+A sentence that opens "List of ..." instead of "What ..." means what the question form means.
+
+An occupation word beside the name changes nothing: in "works created by scientist Isaac
+Newton" the works are still the target, and "scientist" describes Newton, who is not the
+target - so occupation stays null rather than taking it.
+
 FIELD-TO-FILTER MAPPING (stage1 JSON output)
 - answer_field: leave null for the usual case of returning the matching entities (a list of people,
   events, or works). Set it only when the sentence asks for one attribute OF a target as the answer:
@@ -291,6 +319,63 @@ Sentence: When did Beethoven write Symphony 5?
     "related_entity": {
       "relation": "creates",
       "entity_mention": "Beethoven"
+    },
+    "compare_entities": null
+  }
+}
+
+Sentence: Who wrote Hamlet?
+{
+  "target_type": "person",
+  "answer_field": null,
+  "filters": {
+    "name": null,
+    "occupation": null,
+    "subject": null,
+    "location": null,
+    "domain": null,
+    "time_constraint": null,
+    "related_entity": {
+      "relation": "creates",
+      "entity_mention": "Hamlet"
+    },
+    "compare_entities": null
+  }
+}
+
+Sentence: What did Shakespeare write?
+{
+  "target_type": "work",
+  "answer_field": null,
+  "filters": {
+    "name": null,
+    "occupation": null,
+    "subject": null,
+    "location": null,
+    "domain": null,
+    "time_constraint": null,
+    "related_entity": {
+      "relation": "creates",
+      "entity_mention": "Shakespeare"
+    },
+    "compare_entities": null
+  }
+}
+
+Sentence: List of works created by scientist Isaac Newton
+{
+  "target_type": "work",
+  "answer_field": null,
+  "filters": {
+    "name": null,
+    "occupation": null,
+    "subject": null,
+    "location": null,
+    "domain": null,
+    "time_constraint": null,
+    "related_entity": {
+      "relation": "creates",
+      "entity_mention": "Isaac Newton"
     },
     "compare_entities": null
   }
