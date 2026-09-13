@@ -20,3 +20,15 @@ __pycache__/
 cache/
 agent/*.jsonl
 agent/*.summary.json
+
+# Parser output. wpars writes these into the working directory, so a probe run
+# from the repo root leaves them behind - they belong in a run directory under
+# wiki_data, never here.
+Attributes.csv
+DataEvents.csv
+ItemClasses.csv
+ItemSites.csv
+ItemsExt.csv
+ItemsExtNotUsed.csv
+run.pos
+run.pos.info

@@ -7,31 +7,59 @@
 # attributes are kept is decided while the dump is parsed, so a new property
 # cannot be backfilled from the CSVs of an earlier run.
 #
-# This run adds seven attribute properties, taking the allowlist from 18 to 25.
-# Each was measured first over the 360 most notable items the extract keeps -
-# 120 each of person, work and event - as the share carrying it on Wikidata,
-# the same check that justified P7937 before run4:
+# This run adds eleven attribute properties, taking the allowlist from 27 to
+# 38. Each was measured first over the 360 most notable items the extract keeps
+# - 120 each of person, work and event - as the share carrying it on Wikidata,
+# the same check that justified P7937 before run4 and the language properties
+# before run5. Notability biases every figure upward, so they compare with each
+# other and with the run5 block, not with the whole corpus.
 #
-#   P407  language of work     78% of works    "French literature" is dropped
-#   P495  country of origin    62% of works     today: that sentence and the
-#   P1412 languages spoken     99% of people    Russian one return the SAME rows
-#   P6886 writing language     79% of people    because nothing distinguishes them
-#   P551  residence            68% of people   answer_field "places" approximates
-#                                               this from citizenship/birth/death
-#   P69   educated at          77% of people   question families the extract
-#   P166  award received       67% of people    cannot answer at all today
-#   P527  has part(s)          62% of events   stored, not yet usable: see below
-#   P361  part of              42% of events
+# Usable on arrival, with no schema change:
 #
-# P1412 and P6886 matter where citizenship is actively wrong: Nabokov wrote in
-# English and Russian, Conrad in English, and P27 says neither.
+#   P39   position held        53% of people   what LEADER_OCCUPATIONS works
+#                                               around today, inferring rule from
+#                                               P106 "politician" for Ivan the
+#                                               Terrible. P39 says "Tsar of All
+#                                               Russia" in those words
+#   P840  narrative location   30% of works    goes into PLACE_PROPS["work"] as
+#                                               P495 did in ac90f6a: "novels set
+#                                               in Paris". Different from P495,
+#                                               which says where a work is from
 #
-# P527 and P361 are along for the ride, because one more property in a re-parse
-# costs nothing and wanting it afterwards costs another 21 hours. They are not
-# usable on arrival: "which battles were part of WWII" needs a transitive
-# closure over P361, since the hierarchy is multi-level - Normandy landings is
-# part of Operation Overlord, which is part of the war - and an intent relation
-# to ask it with. Expect them to sit unused until both exist.
+# One filter field each:
+#
+#   P21   sex or gender       100% of people   the highest coverage measured, and
+#                                               "women scientists" cannot be
+#                                               expressed at all today
+#   P119  place of burial      80% of people
+#   P140  religion             78% of people
+#   P509  cause of death       65% of people
+#
+# One new related_entity relation, which makes all five reachable at once.
+# Genealogy is unanswerable today in any phrasing:
+#
+#   P22   father               96% of people
+#   P26   spouse               91% of people
+#   P25   mother               88% of people
+#   P40   child                77% of people
+#   P3373 sibling              74% of people
+#
+# Four candidates were ruled out by the parser rather than by coverage:
+# item_parser.h keeps item-valued claims only ("return (dtype ==
+# wikibase-entityid)"), and P1559 name in native language (96% of people),
+# P1477 birth name (68%), P1449 nickname and P1120 number of deaths are
+# monolingualtext or quantity. P1559 is the one worth regretting - it would
+# have helped match the Russian names that come back as bare labels now.
+#
+# P97 noble title was asked for and dropped: 13%, and for Ivan it holds the
+# same string P39 does. P607 participated in conflict looked like the fix for
+# "what battles did Napoleon participate in", which returns one row - Napoleon
+# has two P607 statements, so it is not the fix.
+#
+# The run5 caveat still stands for P527/P361: they arrived, they are stored,
+# and they remain unusable until a transitive closure over P361 and an intent
+# relation exist. Eight of the eleven here are the same bet - real data waiting
+# on schema work - and only P39 and P840 pay off the day the run lands.
 #
 # The previous run added P7937 "form of creative work" and seeded painting in
 # build_class_closure.py. Both worked: P7937 went from 0 rows to 303,706, all
@@ -70,20 +98,20 @@
 #   ./rerun_extract.sh                  # everything, in order
 #   ./rerun_extract.sh preflight        # just the checks
 #   ./rerun_extract.sh parse            # or values / load / verify
-#   OUT_DIR=/data/run5 ./rerun_extract.sh
+#   OUT_DIR=/data/run6 ./rerun_extract.sh
 #
 # Unattended:
 #   nohup ./rerun_extract.sh > ~/rerun.log 2>&1 &
 #   tail -f ~/rerun.log
 #
 # Nothing here writes to the current run directory or its database, so the
-# question pipeline keeps working off run4 while this runs.
+# question pipeline keeps working off run5 while this runs.
 
 set -uo pipefail
 
 WIKI=${WIKI:-/home/denis/projects/wiki}
-OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run5}
-OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run4}
+OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run6}
+OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run5}
 DUMP=${DUMP:-/mnt/nfs/wiki/wikidata-20250922-all.json}
 PROPS=${PROPS:-/home/denis/projects/wiki_data/properties.json}
 CONFIG=${CONFIG:-/home/denis/projects/wiki_data/classes}
@@ -209,8 +237,8 @@ def counts(path):
     #two that motivated it reach their cases - a novel that can be told apart
     #by language, and a person whose residence is stated rather than inferred
     added = {}
-    for pid in ("P407", "P495", "P1412", "P6886", "P551", "P69", "P166",
-                "P527", "P361"):
+    for pid in ("P39", "P840", "P21", "P119", "P140", "P509",
+                "P22", "P26", "P25", "P40", "P3373"):
         added[pid] = con.execute("SELECT count(*) FROM attributes"
                                  " WHERE property = ?", [pid]).fetchone()[0]
     #"What novels exist in French literature?" and the Russian version of the
@@ -223,10 +251,17 @@ def counts(path):
           AND EXISTS (SELECT 1 FROM attributes a JOIN value_items v ON v.qid = a."value"
                       WHERE a.qid = i.qid AND a.property IN ('P921','P136','P7937')
                         AND regexp_matches(v."label", '(?i)\\bnovel'))""").fetchone()[0]
-    #Beethoven lived in Bonn and Vienna; P551 should say so directly instead of
-    #it being reconstructed from citizenship, birth, death and work location
+    #Ivan the Terrible is the item that prompted this run. P106 files him as
+    #"politician" and nothing else that says he ruled; P39 should say "Tsar of
+    #All Russia" outright, which is what LEADER_OCCUPATIONS is working around.
     lived = con.execute("""
-        SELECT count(*) FROM attributes a WHERE a.qid = 'Q255' AND a.property = 'P551'
+        SELECT count(*) FROM attributes a JOIN value_items v ON v.qid = a."value"
+        WHERE a.qid = 'Q7996' AND a.property = 'P39'
+          AND regexp_matches(v."label", '(?i)tsar')""").fetchone()[0]
+    #and the question that could not be asked in any phrasing before: a person
+    #with a father the extract can name
+    parents = con.execute("""
+        SELECT count(*) FROM attributes WHERE property = 'P22'
         """).fetchone()[0]
     forms = con.execute("SELECT count(*) FROM attributes"
                         " WHERE property = 'P7937'").fetchone()[0]
@@ -239,13 +274,13 @@ def counts(path):
                       WHERE a.qid = i.qid AND a.property = 'P86'
                         AND regexp_matches(v."label", '(?i)\\bBeethoven'))""").fetchone()[0]
     con.close()
-    return row, spot, forms, symphonies, added, french, lived
+    return row, spot, forms, symphonies, added, french, lived, parents
 
 new_counts = counts(new)
 if new_counts is None:
     raise SystemExit(f"no database at {new}")
 ((items, no_label, values_no_label), spot, forms, symphonies,
- added, french, lived) = new_counts
+ added, french, lived, parents) = new_counts
 print(f"  items                     {items:,}")
 print(f"  items with no label       {no_label:,}  ({no_label / items:.1%})")
 print(f"  attribute values no label {values_no_label:,}")
@@ -255,15 +290,17 @@ for pid, n in added.items():
     print(f"    {pid:<8} {n:>12,}   {'OK' if n else 'EMPTY - not in the allowlist?'}")
 print(f"  French-language novels    {french:,}"
       f"   {'OK' if french else 'LOW - P407 not reaching works'}")
-print(f"  Beethoven P551 residence  {lived} statement(s)"
-      f"   {'OK' if lived else 'LOW - expected Bonn/Vienna'}")
+print(f"  Ivan the Terrible P39     {lived} tsar statement(s)"
+      f"   {'OK' if lived else 'LOW - expected Tsar of All Russia'}")
+print(f"  people with a named father {parents:,}"
+      f"   {'OK' if parents else 'EMPTY - P22 not in the allowlist?'}")
 print(f"  P7937 rows                {forms:,}")
 print(f"  Beethoven symphonies      {symphonies} findable by kind"
       f"   {'OK' if symphonies >= 9 else 'LOW - expected 9'}")
 
 old_counts = counts(old)
 if old_counts:
-    (o_items, o_no_label, o_values), _, o_forms, o_symphonies, _, _, _ = old_counts
+    (o_items, o_no_label, o_values), _, o_forms, o_symphonies, _, _, _, _ = old_counts
     print(f"  previous run              {o_items:,} items, {o_no_label:,} unlabelled,"
           f" {o_values:,} values unlabelled")
     print(f"  labels recovered          {o_no_label - no_label:,}")
