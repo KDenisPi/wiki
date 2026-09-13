@@ -149,6 +149,22 @@ OCCUPATION_AREAS = {
 #13,049 painters - Masaccio, class human, P101 "art of painting" - against the
 #items that are actually about painting.
 SUBJECT_PROPS = ("P921", "P136", "P7937")      # main subject, genre, form
+
+#A recording is not the work it records. "Which symphonies did Beethoven
+#write" returned fifteen rows: the nine symphonies, Wellington's Victory, and
+#one 2018 album with its four movements. The recordings carry P136 genre
+#"symphony" while the real works carry P7937 form "symphony", so dropping
+#genre would separate them - and would also destroy the painting questions,
+#because "painting" arrives only as a genre (68,389 rows against none as a
+#form). Naming the two classes that mean "a released recording" costs nothing
+#instead: a work in its own right is never classed album or audio track.
+RECORDING_CLASSES = ("album", "audio track")
+
+#Except when the recording IS the question. "Which albums did they release"
+#names the class it wants, so the exclusion stands down rather than answering
+#nothing at all.
+RECORDING_WORDS = ("album", "albums", "track", "tracks", "recording",
+                   "recordings", "single", "singles", "discography")
 PARTICIPANT_PROPS = ("P710", "P1344")          # participant, participant in
 BIRTH, DEATH = "P569", "P570"
 
@@ -252,6 +268,29 @@ def _subject_exists(value: str) -> str:
                 f" JOIN classes c ON c.qid = l.{CLASS_COL}"
                 f" WHERE l.qid = i.qid AND {class_match})")
     return f"({by_subject}\n       OR {by_class})"
+
+
+def _not_a_recording() -> str:
+    """Exclude items that are ONLY a released recording.
+
+    Only, because the class label is ambiguous and carrying it proves nothing
+    on its own. "Album" in Wikidata is both a music release and a bound book
+    of paintings, so excluding everything classed album took three real works
+    out of "paintings created before Picasso" - the Wen Zhengming albums,
+    classed album AND painting. The same on the other side: "Ain't Nobody
+    Home" is classed audio track, single AND song, and is a song.
+
+    An item that is a work in its own right says so with a second class. The
+    2018 recording of the Fifth says nothing else - the release is classed
+    album alone and its four movements audio track alone - which is what
+    separates them from everything worth keeping. An item with no class at all
+    still passes, the same way the person exclusion lets it pass.
+    """
+    labels = ", ".join(_lit(c) for c in RECORDING_CLASSES)
+    in_class = (f"SELECT 1 FROM item_classes l JOIN classes c ON c.qid = l.{CLASS_COL}"
+                f" WHERE l.qid = i.qid AND lower({C_LABEL})")
+    return (f"NOT (EXISTS ({in_class} IN ({labels}))"
+            f"\n            AND NOT EXISTS ({in_class} NOT IN ({labels})))")
 
 
 def _year_expr(prop: str = None) -> str:
@@ -723,6 +762,8 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             dropped.append(f"subject {subject!r} beside an explicit name")
         else:
             where.append(_subject_exists(subject))
+            if not any(re.search(rf"(?i)\b{w}\b", subject) for w in RECORDING_WORDS):
+                where.append(_not_a_recording())
 
     if filters.get("related_entity"):
         where += _related_conditions(target, filters["related_entity"])
@@ -854,6 +895,15 @@ def _self_check(db_path: str) -> int:
         ("unknown domain is dropped, not applied",
          intent("work", domain="mathematics",
                 related_entity={"relation": "creates", "entity_mention": "Isaac Newton"})),
+        #a recording of a work is not the work; the 2018 album of the Fifth and
+        #its four movements carry genre "symphony" and used to answer with it
+        ("symphonies are works, not the recordings of them",
+         intent("work", subject="symphony", domain="music",
+                related_entity={"relation": "creates", "entity_mention": "Beethoven"})),
+        #and the exclusion stands down when the recording is what was asked for
+        ("an album question still reaches albums",
+         intent("work", subject="album", domain="music",
+                related_entity={"relation": "creates", "entity_mention": "Beethoven"})),
         #the three malformed shapes stage 1 emits that used to be refused
         #outright, each of which cost the whole query rather than one filter
         ("in_range with no years is dropped, not refused",
