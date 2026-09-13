@@ -30,7 +30,9 @@ Convert the user's question into a structured JSON query intent. Extract:
   "symphonies", "novels", "paintings", "battles", "elections" - the word that says WHICH sort of
   work or event, singular and lowercased ("symphonies" -> "symphony"). Not for people: a person's
   kind is their occupation. See the note below for how it differs from domain.
-- filters.location: a place name, or null
+- filters.location: a place name, or null. A nationality adjective or a bare country name in
+  front of the occupation is one, exactly as "in <place>" after it would be: "Russian
+  composers", "Russia leaders", "French painters" -> location "Russia", "Russia", "France".
 - filters.domain: exactly one of "art" | "event" | "literature" | "music" | "person" | "science",
   or null. No other value is allowed - see the mapping rule below.
 - filters.time_constraint: one of:
