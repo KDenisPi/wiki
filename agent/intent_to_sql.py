@@ -66,6 +66,16 @@ CREATOR_PROPS = ("P50", "P86", "P170", "P175", "P676")
 #composers in Vienna by the other four, 1,871 with it). P495 is left off
 #events on purpose: it sits on 305,851 art/literature/music items and 5,829
 #event ones, and on an event it means provenance rather than where it happened.
+#run6 brought in P840 "narrative location" and it is deliberately NOT here.
+#Every other property in this set answers "where does this work come from";
+#P840 answers "where is the story set", which is a different question about
+#the same word. Adding it moved three gold cases and all three the wrong way:
+#"What novels were written in Saint Petersburg?" went from 2 to 21 by
+#collecting Crime and Punishment, The Nose and Nevsky Prospekt - books set
+#there, not written there. The grain is fine (18,768 rows, no worse than
+#P551); the relation is the problem. P840 belongs to a question this pipeline
+#cannot ask yet, "novels set in Russia", which needs stage 1 to tell "set in"
+#apart from "created in" before the composer can act on the difference.
 PLACE_PROPS = {
     "person": ("P27", "P19", "P20", "P937", "P551"),   # citizenship, birth, death, work, residence
     "work":   ("P17", "P276", "P495"),                 # country, location, country of origin
