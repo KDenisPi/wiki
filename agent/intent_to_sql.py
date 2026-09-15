@@ -149,34 +149,37 @@ OCCUPATION_AREAS = {
     "author": "literature", "authors": "literature",
 }
 
-#A country's leaders, which no single P106 label names. The obvious words are
-#the wrong instrument twice over. P39 "position held" is where "President of
-#France" lives and the extract has none of it - 0 rows - so a presidency
-#cannot be asked for directly at all; and matching the title words by word
-#collects race queens (834), drag queens (569), university presidents (321)
-#and lords of the manor (1,115). Matching the whole label exactly collects
-#the 53 queens and 95 presidents that are meant instead.
+#A country's leaders, which no single P106 label names. Matching the title
+#words by word is the wrong instrument - it collects race queens (834), drag
+#queens (569), university presidents (321) and lords of the manor (1,115) -
+#so the whole label is matched exactly, which collects the 53 queens and 95
+#presidents that are meant instead.
 #
 #Measured against people the encyclopaedia agrees are country leaders, the
-#labels that actually carry the meaning are the offices and the standings,
-#not the titles: Peter the Great is ruler and statesperson, Louis XV monarch,
+#labels that carry the meaning are the offices and the standings, not the
+#titles: Peter the Great is ruler and statesperson, Louis XV monarch,
 #Charlemagne sovereign and monarch, Churchill head of government and
 #statesperson, Napoleon all of them at once.
 #
-#"politician" is in it, which looks wrong at first: it is the widest label
-#here by two orders of magnitude, 712,787 people, and a local councillor
-#carries it. Left out, the group is 13,755 people instead of 723,929 - and it
-#answers "political leaders in Russia in the 16th century" without Ivan the
-#Terrible, Boris Godunov or Feodor I, because the encyclopaedia files all
-#three as politician and nothing else. Yeltsin is politician, master builder
-#and civil engineer; Lenin politician, writer, lawyer. The titles are the rare
-#labels and the plain one carries the famous cases.
-#What keeps it from swamping the answer is that nobody asks for leaders alone:
-#the same question with its place and its century is 25 rows with politician
-#and 13 without. A question that really does ask for every leader who ever
-#lived deserves 723,929 rows or a refusal, not a tidy wrong answer.
+#"politician" was in this list and has been taken out again. It was here for
+#one reason: before run6 the extract had no P39, so an office could not be
+#asked for at all, and without the plain label the answer to "political
+#leaders in Russia in the 16th century" lost Ivan the Terrible, Boris Godunov
+#and Feodor I - the encyclopaedia files all three as politician and little
+#else. P39 now carries their offices, so every one of them is still found
+#while the label itself can go.
+#
+#Taking it out is what makes the group mean what it says. It is the widest
+#label here by two orders of magnitude - 712,787 people, and a local
+#councillor carries it - and with P39 beside it the answer was the union of
+#both rather than the sum of the right parts: "rulers in Russia alive with
+#Newton" came back 175 people led by Boris Morozov and Ilya Miloslavsky, who
+#were boyars. Without it that question is 54 and the 16th-century one 15,
+#with Ivan, Godunov, Feodor I, Alexei I and Peter the Great all still in. The
+#eight people it drops from the latter are a diplomat, an advisor, a
+#metropolitan, a writer, the head of the oprichnina, a boyar and a tsarevich
+#who died as a child. None of them ruled Russia.
 LEADER_OCCUPATIONS = (
-    "politician",                                          # 712,787
     "monarch", "sovereign", "ruler", "statesperson",       # 3,119 / 1,984 / 1,486 / 6,239
     "head of state", "head of government", "regent",       # 24 / 21 / 345
     "emperor", "king", "queen", "tsar", "president",       # 48 / 532 / 53 / 5 / 95
@@ -1089,20 +1092,27 @@ def _self_check(db_path: str) -> int:
         ("'after' means a time comparison even when the aspect says age",
          intent("person", compare_entities={"entities": ["Beethoven", "Mozart"],
                                             "aspect": "age", "relation": "after"})),
-        #The gold corpus asks nothing about leaders, so these two are the only
-        #cover the group has. The first reaches a tsar the encyclopaedia files
-        #as a politician, the second one it files as nothing at all - she is in
-        #the answer by her office and by no other route.
-        ("a leader is found by occupation",
+        #The gold corpus asks nothing about leaders, so these three are the only
+        #cover the group has, one per route into it. Vasili IV is filed
+        #"monarch" and arrives by standing. Irina Godunova is filed "nun" and
+        #"empress consort", neither of which is a leader label, so she arrives
+        #by her office and by no other route - as does Ivan the Terrible, whom
+        #the encyclopaedia files as torturer, politician and prison officer.
+        ("a leader is found by standing",
          intent("person", occupation="leaders", location="Russia",
                 time_constraint={"type": "in_range", "start_year": 1500,
                                  "end_year": 1599}),
-         "Ivan the Terrible"),
+         "Vasili IV of Russia"),
         ("a leader is found by office alone",
          intent("person", occupation="leaders", location="Russia",
                 time_constraint={"type": "in_range", "start_year": 1500,
                                  "end_year": 1599}),
          "Irina Godunova"),
+        ("a tsar filed as a politician is still found",
+         intent("person", occupation="leaders", location="Russia",
+                time_constraint={"type": "in_range", "start_year": 1500,
+                                 "end_year": 1599}),
+         "Ivan the Terrible"),
     ]
 
     try:
