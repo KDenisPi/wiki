@@ -31,7 +31,7 @@ back to the model rather than get a confidently wrong query.
     ...                                           "entity_mention": "Isaac Newton"}}})
 
 Self-check (builds SQL for a set of intents and runs each one):
-    python intent_to_sql.py --db /home/denis/projects/wiki_data/run5/wiki.duckdb
+    python intent_to_sql.py --db /home/denis/projects/wiki_data/run6/wiki.duckdb
 """
 
 import json
@@ -359,8 +359,17 @@ def _anchor_cte(mention: str) -> str:
     """The lifespan of one named person, used as a time anchor.
 
     Many items share a surname, so the anchor is resolved to a person who has a
-    birth date and is the most documented of the candidates - never LIMIT 1 on
-    the bare label, which picks an arbitrary namesake.
+    birth date and is the best known of the candidates - never LIMIT 1 on the
+    bare label, which picks an arbitrary namesake.
+
+    Best known is sitelinks, the same measure _person_cte uses, and not the
+    number of attribute rows. Counting attributes measures how much of an item
+    this extract happens to carry, which is a property of the run rather than
+    of the person: in run5 Isaac Newton and Olivia Newton-John held 45 rows
+    each, so "physicists who worked before Newton" resolved to whichever of the
+    two the tie handed back and answered "before 1948" about half the time.
+    Sitelinks separates them 300 to 74 and does not move when a run asks the
+    dump for more properties.
     """
     return f"""anchor AS (
     SELECT {_year_expr(BIRTH)} AS born,
@@ -368,7 +377,8 @@ def _anchor_cte(mention: str) -> str:
     FROM items i
     WHERE {_word_match('coalesce(i."label", i.label_ru)', mention)}
       AND {_year_expr(BIRTH)} IS NOT NULL
-    ORDER BY (SELECT count(*) FROM attributes a WHERE a.qid = i.qid) DESC
+    ORDER BY (SELECT sitelinks FROM sites s WHERE s.qid = i.qid) DESC NULLS LAST,
+             (SELECT count(*) FROM attributes a WHERE a.qid = i.qid) DESC
     LIMIT 1
 )"""
 
@@ -1054,7 +1064,7 @@ def _self_check(db_path: str) -> int:
 
 
 if __name__ == "__main__":
-    db = "/home/denis/projects/wiki_data/run5/wiki.duckdb"
+    db = "/home/denis/projects/wiki_data/run6/wiki.duckdb"
     args = sys.argv[1:]
     if args and args[0] == "--db":
         db = args[1]
