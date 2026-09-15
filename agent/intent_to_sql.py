@@ -130,6 +130,10 @@ PERSON_CLASS = ('SELECT 1 FROM item_classes l'
 
 OCCUPATION_PROP = "P106"
 
+#P39 "position held" - the office someone actually occupied, as opposed to
+#P106, which is the standing the encyclopaedia files them under. run6 added it.
+POSITION_PROP = "P39"
+
 #An occupation word that names a whole area rather than a profession. Matching
 #those literally answers nothing useful: the 15th century holds 58,088 dated
 #people, but only 50 of them are labelled "scientist" - the rest are
@@ -179,6 +183,39 @@ LEADER_OCCUPATIONS = (
     "prime minister", "chancellor", "consul", "lord",      # 19 / 526 / 467 / 153
     "prince", "sultan", "caliph", "khan", "viceroy",       # 54 / 55 / 76 / 42 / 16
     "duke", "shah", "pharaoh",                             # 11 / 7 / 3
+)
+
+#The other half of the group, and the one that names offices rather than
+#standings. P106 says what someone was, P39 says what they held, and the two
+#disagree in both directions: Irina Godunova and Feodor II ruled Russia
+#without carrying any leader occupation, while most monarchs' own P106 is
+#"politician" and nothing more. Both halves are needed, joined by OR.
+#
+#P39 cannot be used whole. It carries every position there is - its single
+#commonest value is "diocesan bishop", then "member of the French National
+#Assembly" - so unfiltered it answers "leaders in Russia in the 16th century"
+#with patriarchs, diplomats and clerks: 48 people where 24 was already
+#generous. Nor can the office be recognised by its class, the way a work is:
+#102 of 125,219 office QIDs appear in item_classes, because an office lives in
+#value_items and never enters the item base. That leaves the label.
+#
+#So the title is read off the front of the office name - "Tsar of All Russia",
+#"Khan of Kazan" - and the stop-list throws out the organisations, which is
+#where the bare titles go wrong. "President" alone is 11,563 people and
+#collects the American Medical Association, the French Academy of Sciences and
+#the Geological Society of France; excluding those bodies takes the matching
+#offices from 2,383 to 1,897 and leaves the heads of state behind.
+LEADER_OFFICE_TITLE = (
+    "tsar|tsarina|tsaritsa|king|queen|emperor|empress|monarch|sovereign|"
+    "regent|grand duke|grand prince|doge|sultan|shah|pharaoh|caliph|khan|"
+    "president|prime minister|chancellor|head of state|head of government|"
+    "viceroy|governor-general|first secretary|general secretary|supreme leader"
+)
+LEADER_OFFICE_NOT = (
+    "academy|society|association|university|college|institute|club|federation|"
+    "company|committee|board|chamber|court|bank|faculty|museum|foundation|"
+    "conference|synod|commission|corporation|league|school|hospital|library|"
+    "order of|union of"
 )
 
 #The words a sentence uses for that group. "leader" alone matches 12,503
@@ -292,6 +329,18 @@ def _occupation_area_exists(area: str) -> str:
             f" JOIN occupation_areas oa ON oa.qid = a.\"value\""
             f" WHERE a.qid = i.qid AND a.property = {_lit(OCCUPATION_PROP)}"
             f" AND list_contains(str_split(oa.areas, '|'), {_lit(area)}))")
+
+
+def _leader_office_exists() -> str:
+    """Did this person hold an office whose name is a ruler's title.
+
+    The title has to start the label - "Tsar of All Russia" - so that "deputy
+    to the president" and "king's counsel" do not read as the office itself.
+    """
+    return _attribute_exists(
+        (POSITION_PROP,),
+        f"regexp_matches(lower({V_LABEL}), '^({LEADER_OFFICE_TITLE})( of | |$)')"
+        f" AND NOT regexp_matches(lower({V_LABEL}), '({LEADER_OFFICE_NOT})')")
 
 
 def _attribute_exists(props, match: str) -> str:
@@ -815,8 +864,13 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             #and "leaders" is a named handful, matched whole so that a race
             #queen is not one of them
             labels = ", ".join(_lit(g) for g in group)
-            where.append(_attribute_exists((OCCUPATION_PROP,),
-                                           f"lower({V_LABEL}) IN ({labels})"))
+            by_standing = _attribute_exists((OCCUPATION_PROP,),
+                                            f"lower({V_LABEL}) IN ({labels})")
+            if group is LEADER_OCCUPATIONS:
+                #a leader is either filed as one or held the office of one
+                where.append(f"({by_standing} OR {_leader_office_exists()})")
+            else:
+                where.append(by_standing)
         else:
             where.append(_attribute_exists((OCCUPATION_PROP,),
                                            _word_match(V_LABEL, filters['occupation'])))
@@ -1035,6 +1089,20 @@ def _self_check(db_path: str) -> int:
         ("'after' means a time comparison even when the aspect says age",
          intent("person", compare_entities={"entities": ["Beethoven", "Mozart"],
                                             "aspect": "age", "relation": "after"})),
+        #The gold corpus asks nothing about leaders, so these two are the only
+        #cover the group has. The first reaches a tsar the encyclopaedia files
+        #as a politician, the second one it files as nothing at all - she is in
+        #the answer by her office and by no other route.
+        ("a leader is found by occupation",
+         intent("person", occupation="leaders", location="Russia",
+                time_constraint={"type": "in_range", "start_year": 1500,
+                                 "end_year": 1599}),
+         "Ivan the Terrible"),
+        ("a leader is found by office alone",
+         intent("person", occupation="leaders", location="Russia",
+                time_constraint={"type": "in_range", "start_year": 1500,
+                                 "end_year": 1599}),
+         "Irina Godunova"),
     ]
 
     try:
@@ -1045,9 +1113,12 @@ def _self_check(db_path: str) -> int:
         con = None
 
     failures = 0
-    for title, value in cases:
+    for title, value, *expect in cases:
+        #a case may name someone who has to be in the answer; those run wide
+        #enough to see them, the rest just have to build and execute
+        want = expect[0] if expect else None
         try:
-            sql = build_sql(value, limit=5)
+            sql = build_sql(value, limit=1000 if want else 5)
         except Unsupported as e:
             print(f"FAIL {title}: unsupported ({e})")
             failures += 1
@@ -1061,6 +1132,11 @@ def _self_check(db_path: str) -> int:
             rows = con.execute(sql).fetchall()
         except Exception as e:                  # noqa: BLE001 - the point of the check
             print(f"FAIL {title}: {e}\n{sql}\n")
+            failures += 1
+            continue
+
+        if want and want not in [r[0] for r in rows]:
+            print(f"FAIL {title}: {want!r} is not in the {len(rows)} row(s)")
             failures += 1
             continue
 
