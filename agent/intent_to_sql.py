@@ -223,11 +223,19 @@ LEADER_OFFICE_TITLE = (
     "president|prime minister|chancellor|head of state|head of government|"
     "viceroy|governor-general|first secretary|general secretary|supreme leader"
 )
+#"collegium" is spelled out beside "college" because it does not contain it -
+#colleg-i-um against colleg-e - and it is the single biggest leak in the
+#pattern. Peter the Great's collegia were government ministries, so their
+#president was a minister: the word alone put eight of the thirty-three
+#answers to "rulers in Russia alive with Newton" there, Golovin, Golovkin,
+#Cherkassky, Osterman, Bestuzhev-Ryumin, Vorontsov and both Panins, plus
+#Jacob Bruce at the Collegium of Mining. It costs nothing to exclude: the
+#only offices it reaches are those two, thirteen people, none of them rulers.
 LEADER_OFFICE_NOT = (
-    "academy|society|association|university|college|institute|club|federation|"
-    "company|committee|board|chamber|court|bank|faculty|museum|foundation|"
-    "conference|synod|commission|corporation|league|school|hospital|library|"
-    "order of|union of"
+    "academy|society|association|university|college|collegium|institute|club|"
+    "federation|company|committee|board|chamber|court|bank|faculty|museum|"
+    "foundation|conference|synod|commission|corporation|league|school|hospital|"
+    "library|order of|union of"
 )
 
 #The words a sentence uses for that group. "leader" alone matches 12,503
