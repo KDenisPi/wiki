@@ -12,7 +12,7 @@ constraints would only slow the bulk load down.
 Input (produced by wpars, plus resolve_values.py and build_class_closure.py):
     DataEvents.csv   key;property;time;type;timezone;qual_prop;qual_value;item;class
     ItemsExt.csv     qid;label;description[;lng;label_lng;description_lng]
-    Attributes.csv   key;property;value;item
+    Attributes.csv   key;property;value;item;starts;ends
     ItemClasses.csv  key;item;class
     values.csv       qid;label;description
     select_classes.csv / date_properties.csv / attribute_properties.csv
@@ -36,6 +36,19 @@ import os
 import sys
 
 TIME_RE = r'^([+-])0*(\d+)-(\d{2})-(\d{2})T'
+
+
+def year_of(col: str) -> str:
+    """Just the signed year of a Wikidata time string, or NULL if there is none.
+
+    The attribute periods need a year and nothing finer - a reign is asked
+    about by century or by overlap, never by the day - so they get this rather
+    than the four columns parse_time_cols produces. Same regex, so a date that
+    an event row reads one way cannot read another way here.
+    """
+    return (f"""CASE WHEN regexp_extract({col}, '{TIME_RE}', 2) = '' THEN NULL ELSE
+        CASE WHEN regexp_extract({col}, '{TIME_RE}', 1) = '-' THEN -1 ELSE 1 END
+            * TRY_CAST(regexp_extract({col}, '{TIME_RE}', 2) AS INTEGER) END""")
 
 
 def parse_time_cols(col: str) -> str:
@@ -202,9 +215,15 @@ def main():
 
     # ---- attributes, class links, value labels ---------------------------
     optional = [
+        #starts/ends are the P580/P582 qualifiers of the claim - when a
+        #statement was true, not when the item existed. Files written before
+        #run7 have four columns and read back with both as NULL, which
+        #null_padding handles, so an older run still loads.
         ("attributes", d("Attributes.csv"),
-         {"key": "VARCHAR", "property": "VARCHAR", "value": "VARCHAR", "qid": "VARCHAR"},
-         'SELECT DISTINCT qid, property, value FROM'),
+         {"key": "VARCHAR", "property": "VARCHAR", "value": "VARCHAR", "qid": "VARCHAR",
+          "starts": "VARCHAR", "ends": "VARCHAR"},
+         "SELECT DISTINCT qid, property, value,"
+         f" {year_of('starts')} AS start_year, {year_of('ends')} AS end_year FROM"),
         ("item_classes", d("ItemClasses.csv"),
          {"key": "VARCHAR", "qid": "VARCHAR", "class": "VARCHAR"},
          'SELECT DISTINCT qid, "class" FROM'),

@@ -7,54 +7,51 @@
 # attributes are kept is decided while the dump is parsed, so a new property
 # cannot be backfilled from the CSVs of an earlier run.
 #
-# This run adds eleven attribute properties, taking the allowlist from 27 to
-# 38. Each was measured first over the 360 most notable items the extract keeps
-# - 120 each of person, work and event - as the share carrying it on Wikidata,
-# the same check that justified P7937 before run4 and the language properties
-# before run5. Notability biases every figure upward, so they compare with each
-# other and with the run5 block, not with the whole corpus.
+# This run changes no property list at all. It re-reads the dump to keep two
+# qualifiers the parser has always thrown away: P580 "start time" and P582
+# "end time", on attribute claims.
 #
-# Usable on arrival, with no schema change:
+# What that buys. Wikidata dates the STATEMENT, not the item. A reign is
+# "position held: Tsar of All Russia" carrying P580 1682 and P582 1725; a
+# citizenship that lapsed carries the years it was true. Until now the parser
+# stored a claim's value and dropped everything qualifying it, so run6 knows
+# Peter the Great held two offices and cannot say he reigned 1682-1725. His
+# whole dated record is P569 1672 and P570 1725, birth and death.
 #
-#   P39   position held        53% of people   what LEADER_OCCUPATIONS works
-#                                               around today, inferring rule from
-#                                               P106 "politician" for Ivan the
-#                                               Terrible. P39 says "Tsar of All
-#                                               Russia" in those words
-#   P840  narrative location   30% of works    goes into PLACE_PROPS["work"] as
-#                                               P495 did in ac90f6a: "novels set
-#                                               in Paris". Different from P495,
-#                                               which says where a work is from
+# The 641,801 P580 rows already in the extract are a different thing: they are
+# top-level claims on items that have a duration - 386,370 of them clinical
+# trials, then badminton events and sports seasons. Only 348 people carry one.
 #
-# One filter field each:
+# What it fixes, concretely. "Which rulers in Russia lived when Isaac Newton
+# was alive?" answers 25 people, and the wrong ones are wrong for want of a
+# date: Gustav Evertsson Horn was Governor-General of Finland while Finland was
+# Swedish, and Baltic regents held Courland rather than Russia. Neither can be
+# excluded today, because no office in the database has a time attached and
+# P27 "Russia" sits undated on men who died in 1666 - Q159 is the modern
+# Russian Federation, carried by 92,740 people.
 #
-#   P21   sex or gender       100% of people   the highest coverage measured, and
-#                                               "women scientists" cannot be
-#                                               expressed at all today
-#   P119  place of burial      80% of people
-#   P140  religion             78% of people
-#   P509  cause of death       65% of people
+# It is also the only route to "who ruled Russia in 1700", which needs the
+# span of the office and not the lifespan of the person.
 #
-# One new related_entity relation, which makes all five reachable at once.
-# Genealogy is unanswerable today in any phrasing:
+# Cost and shape of the change:
 #
-#   P22   father               96% of people
-#   P26   spouse               91% of people
-#   P25   mother               88% of people
-#   P40   child                77% of people
-#   P3373 sibling              74% of people
+#   cpp/item_parser.h   parse_period() reads the two qualifiers; attribute
+#                       claims are walked directly rather than through
+#                       parse_property, so nothing about date parsing moves
+#                       and every event row comes out identical
+#   Attributes.csv      six columns now, key;property;value;item;starts;ends
+#   the dedup key       gains the period. The dictionary keeps one row per
+#                       key, and a second spell in the same office would
+#                       otherwise overwrite the first: verified on Q1056,
+#                       who holds one office in 1924-29, 1929-34 and 1934-39,
+#                       and keeps all three
+#   load_duckdb.py      attributes gains start_year and end_year, read with
+#                       the same regex the event dates use. Four-column files
+#                       from run6 and earlier still load, periods NULL
 #
-# Four candidates were ruled out by the parser rather than by coverage:
-# item_parser.h keeps item-valued claims only ("return (dtype ==
-# wikibase-entityid)"), and P1559 name in native language (96% of people),
-# P1477 birth name (68%), P1449 nickname and P1120 number of deaths are
-# monolingualtext or quantity. P1559 is the one worth regretting - it would
-# have helped match the Russian names that come back as bare labels now.
-#
-# P97 noble title was asked for and dropped: 13%, and for Ivan it holds the
-# same string P39 does. P607 participated in conflict looked like the fix for
-# "what battles did Napoleon participate in", which returns one row - Napoleon
-# has two P607 statements, so it is not the fix.
+# Measured on the 1,000-item fixture: 453 of 4,880 attribute rows carry a
+# period, 57 of them open-ended - an office still held, which is a start with
+# no end and has to stay distinguishable from no dates at all.
 #
 # The run5 caveat still stands for P527/P361: they arrived, they are stored,
 # and they remain unusable until a transitive closure over P361 and an intent
@@ -110,8 +107,8 @@
 set -uo pipefail
 
 WIKI=${WIKI:-/home/denis/projects/wiki}
-OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run6}
-OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run5}
+OUT_DIR=${OUT_DIR:-/home/denis/projects/wiki_data/run7}
+OLD_DIR=${OLD_DIR:-/home/denis/projects/wiki_data/run6}
 DUMP=${DUMP:-/mnt/nfs/wiki/wikidata-20250922-all.json}
 PROPS=${PROPS:-/home/denis/projects/wiki_data/properties.json}
 CONFIG=${CONFIG:-/home/denis/projects/wiki_data/classes}
@@ -233,14 +230,23 @@ def counts(path):
         FROM items''').fetchone()
     spot = {q: con.execute('SELECT "label" FROM items WHERE qid = ?', [q]).fetchone()
             for q in ("Q762", "Q76", "Q2831", "Q12418")}
-    #what this run is for: does each new property have rows at all, and do the
-    #two that motivated it reach their cases - a novel that can be told apart
-    #by language, and a person whose residence is stated rather than inferred
+    #what this run is for: the share of each property's claims that now say
+    #when they were true. P39 should be the highest by far - an office is
+    #dated far more often than a citizenship - and P106 near zero, because an
+    #occupation is rarely given a span
+    #the previous run has no period columns at all - that is the baseline this
+    #one has to rise from, so read it as zero rather than falling over
+    dated_cols = {r[0] for r in con.execute("DESCRIBE attributes").fetchall()}
+    has_period = "start_year" in dated_cols
+
     added = {}
-    for pid in ("P39", "P840", "P21", "P119", "P140", "P509",
-                "P22", "P26", "P25", "P40", "P3373"):
-        added[pid] = con.execute("SELECT count(*) FROM attributes"
-                                 " WHERE property = ?", [pid]).fetchone()[0]
+    for pid in ("P39", "P27", "P106", "P551", "P26", "P19"):
+        dated = con.execute("SELECT count(*) FROM attributes WHERE property = ?"
+                            " AND (start_year IS NOT NULL OR end_year IS NOT NULL)",
+                            [pid]).fetchone()[0] if has_period else 0
+        total = con.execute("SELECT count(*) FROM attributes"
+                            " WHERE property = ?", [pid]).fetchone()[0]
+        added[pid] = (dated, total)
     #"What novels exist in French literature?" and the Russian version of the
     #same sentence returned identical rows before this: nothing said which
     french = con.execute("""
@@ -257,12 +263,18 @@ def counts(path):
     lived = con.execute("""
         SELECT count(*) FROM attributes a JOIN value_items v ON v.qid = a."value"
         WHERE a.qid = 'Q7996' AND a.property = 'P39'
-          AND regexp_matches(v."label", '(?i)tsar')""").fetchone()[0]
+          AND regexp_matches(v."label", '(?i)tsar')
+          AND a.start_year IS NOT NULL""").fetchone()[0] if has_period else 0
     #and the question that could not be asked in any phrasing before: a person
     #with a father the extract can name
+    #the case the dedup key had to be widened for: one person, one office,
+    #two separate spells. On item_property_value alone the second would
+    #overwrite the first and a broken reign would read as one unbroken one
     parents = con.execute("""
-        SELECT count(*) FROM attributes WHERE property = 'P22'
-        """).fetchone()[0]
+        SELECT count(*) FROM (
+            SELECT qid, property, "value" FROM attributes
+            WHERE property = 'P39' AND start_year IS NOT NULL
+            GROUP BY 1, 2, 3 HAVING count(*) > 1)""").fetchone()[0] if has_period else 0
     forms = con.execute("SELECT count(*) FROM attributes"
                         " WHERE property = 'P7937'").fetchone()[0]
     symphonies = con.execute("""
@@ -285,15 +297,17 @@ print(f"  items                     {items:,}")
 print(f"  items with no label       {no_label:,}  ({no_label / items:.1%})")
 print(f"  attribute values no label {values_no_label:,}")
 
-print("  properties added by this run:")
-for pid, n in added.items():
-    print(f"    {pid:<8} {n:>12,}   {'OK' if n else 'EMPTY - not in the allowlist?'}")
+print("  claims that now carry a period:")
+for pid, (dated, total) in added.items():
+    share = f"{dated / total:.1%}" if total else "-"
+    note = "OK" if (pid != "P39" or dated) else "EMPTY - qualifiers not read?"
+    print(f"    {pid:<8} {dated:>10,} dated of {total:>12,}  {share:>6}   {note}")
 print(f"  French-language novels    {french:,}"
       f"   {'OK' if french else 'LOW - P407 not reaching works'}")
-print(f"  Ivan the Terrible P39     {lived} tsar statement(s)"
-      f"   {'OK' if lived else 'LOW - expected Tsar of All Russia'}")
-print(f"  people with a named father {parents:,}"
-      f"   {'OK' if parents else 'EMPTY - P22 not in the allowlist?'}")
+print(f"  Ivan the Terrible reign   {lived} dated tsar statement(s)"
+      f"   {'OK' if lived else 'LOW - expected a P580 on Tsar of All Russia'}")
+print(f"  offices held twice over   {parents:,}"
+      f"   {'OK' if parents else 'EMPTY - the period is not in the dedup key'}")
 print(f"  P7937 rows                {forms:,}")
 print(f"  Beethoven symphonies      {symphonies} findable by kind"
       f"   {'OK' if symphonies >= 9 else 'LOW - expected 9'}")

@@ -160,6 +160,14 @@ public:
     //P805;statement is subject of;(qualifying) item that describes the relation identified in this statement
     std::vector<std::string> q_props = {"P4649", "P805"};
 
+    //P580;start time;P582;end time - as qualifiers these date the STATEMENT
+    //rather than the item: "position held: Tsar of All Russia" qualified
+    //P580 1682, P582 1725 is how a reign is written down. Read for attribute
+    //claims only, so that an office, a citizenship or a residence can say for
+    //how long it was true.
+    const std::string s_P580 = "P580";
+    const std::string s_P582 = "P582";
+
 
     /**
      * @brief
@@ -271,6 +279,47 @@ public:
         }
 
         return data_value();
+    }
+
+    /**
+     * @brief The span a claim was true for, from its start and end qualifiers.
+     *
+     * Wikidata dates a statement rather than the item: a reign is "position
+     * held: Tsar of All Russia" carrying P580 1682 and P582 1725, and a
+     * citizenship that lapsed carries the years it held. Both are read raw,
+     * in the dump's own "+1682-05-07T00:00:00Z" spelling, and turned into
+     * years by the loader with the same expression the event dates use.
+     *
+     * Either end can be missing on its own - a reign that has not finished,
+     * or one whose beginning nobody recorded - so the two are independent and
+     * an absent one stays an empty string.
+     *
+     * @param obj the claim object
+     * @param starts set to the P580 value, if the claim carries one
+     * @param ends set to the P582 value, if the claim carries one
+     */
+    void parse_period(const rapidjson::Value::ConstObject& obj,
+        std::string& starts, std::string& ends){
+
+        const auto quals = obj.FindMember(s_qualifiers.c_str());
+        if(obj.MemberEnd() == quals || !quals->value.IsObject()){
+            return;
+        }
+
+        for(const auto& p : {s_P580, s_P582}){
+            const auto arr = quals->value.FindMember(p.c_str());
+            if(quals->value.MemberEnd() == arr || !arr->value.IsArray() || arr->value.Empty()){
+                continue;
+            }
+
+            const auto val = pasrse_obj_data_value(arr->value[0].GetObject());
+            //a qualifier that is not a date is somebody else's modelling
+            if(val.empty() || !is_type_time(get(val, 2))){
+                continue;
+            }
+
+            (p == s_P580 ? starts : ends) = get(val, 1);
+        }
     }
 
     /**
@@ -614,13 +663,26 @@ public:
             return 0;
         }
 
-        std::vector<data_value> result;
-        parse_property<data_value>(it, prop_name, result);
+        if(!it->value.IsArray()){
+            return 0;
+        }
 
+        //the claims are walked here rather than through parse_property because
+        //the period is a qualifier, and parse_property keeps the claim object
+        //to itself. Going through it would also mean changing what it does for
+        //dates, and every event row in the extract comes out of that path.
         int stored = 0;
-        for(const data_value& res : result){
+        const auto property_data = it->value.GetArray();
+        for(auto p_data = property_data.Begin(); p_data != property_data.End(); ++p_data){
+            const auto data_obj = p_data->GetObject();
+            const auto mainsnak = data_obj.FindMember(s_mainsnak.c_str());
+            if(data_obj.MemberEnd() == mainsnak){
+                continue;
+            }
+
+            const auto res = parse_data_value(mainsnak, prop_name);
             //keep item values only, an attribute pointing at a date is a modelling error
-            if(!is_type_wikiid(get(res, 2))){
+            if(res.empty() || !is_type_wikiid(get(res, 2))){
                 continue;
             }
 
@@ -629,7 +691,11 @@ public:
                 continue;
             }
 
-            collected.push_back({prop_name, value_id, item_id});
+            //and when the claim says how long it held, keep that beside it
+            std::string starts, ends;
+            parse_period(data_obj, starts, ends);
+
+            collected.push_back({prop_name, value_id, item_id, starts, ends});
             stored++;
         }
 
@@ -771,9 +837,15 @@ public:
                             }
 
                             for(const auto& attr : attributes){
-                                //attr is {property, value, item}
+                                //attr is {property, value, item, starts, ends}.
+                                //The period is part of the key because the
+                                //dictionary keeps one row per key: Napoleon
+                                //was Emperor twice, and on item_property_value
+                                //alone the second spell would overwrite the
+                                //first and the reign would read as one.
                                 _receiver->put_dictionary_value("Attributes",
-                                    attr[2] + "_" + attr[0] + "_" + attr[1], attr);
+                                    attr[2] + "_" + attr[0] + "_" + attr[1]
+                                        + "_" + attr[3] + "_" + attr[4], attr);
                             }
                         }
                         else{
