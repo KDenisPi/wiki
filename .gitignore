@@ -32,3 +32,7 @@ ItemsExt.csv
 ItemsExtNotUsed.csv
 run.pos
 run.pos.info
+
+# Scratch notes kept beside the code - the command to launch a re-extract and
+# the like. Handy to have in the working directory, not worth versioning.
+wpars_run_easy.txt
