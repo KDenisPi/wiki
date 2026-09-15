@@ -179,8 +179,17 @@ OCCUPATION_AREAS = {
 #eight people it drops from the latter are a diplomat, an advisor, a
 #metropolitan, a writer, the head of the oprichnina, a boyar and a tsarevich
 #who died as a child. None of them ruled Russia.
+#"statesperson" came out for the same reason, one commit later. It is the
+#widest label left once politician has gone - 6,239 people - and it means
+#prominent in public life, not in charge of anything: Pyotr Pronsky was a
+#military man, Ivan Cherkasov a privy councillor whose own P39 is "Geheimrat".
+#Neither reaches the answer by any other route, and taking the label out takes
+#"rulers in Russia alive with Newton" from 54 people to 33. Nothing real is
+#lost, because the label is never the only one a leader carries: Churchill,
+#Peter the Great, Napoleon, de Gaulle and Lincoln are all still found, by
+#"head of government", "ruler", "monarch" or their office.
 LEADER_OCCUPATIONS = (
-    "monarch", "sovereign", "ruler", "statesperson",       # 3,119 / 1,984 / 1,486 / 6,239
+    "monarch", "sovereign", "ruler",                       # 3,119 / 1,984 / 1,486
     "head of state", "head of government", "regent",       # 24 / 21 / 345
     "emperor", "king", "queen", "tsar", "president",       # 48 / 532 / 53 / 5 / 95
     "prime minister", "chancellor", "consul", "lord",      # 19 / 526 / 467 / 153
