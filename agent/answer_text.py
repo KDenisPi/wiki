@@ -44,6 +44,23 @@ def _life(born, died) -> str:
     return f"{_year(born)}-{_year(died)}"
 
 
+def _held(office, held_from, held_to) -> str:
+    """How long someone held the office the question asked about.
+
+    Separate from _life because a reign is not a lifespan and printing it as
+    one would say Peter the Great was born in 1682. Only the offices run7
+    dated reach here, so a person with none prints as a bare lifespan rather
+    than as an office with question marks in it.
+    """
+    if not office or held_from is None:
+        return ""
+    #an office with no end date is one the extract never closed - still held,
+    #or simply unrecorded - so it is left open the way _life leaves a life
+    when = f"{_year(held_from)}-{_year(held_to)}" if held_to is not None \
+        else f"from {_year(held_from)}"
+    return f"{office} {when}"
+
+
 def _join(parts: list) -> str:
     """a, b and c - the serial comma left out, as English rather than SQL."""
     parts = [p for p in parts if p]
@@ -159,6 +176,14 @@ def _listing(columns, rows, limit=None) -> str:
         name = row[0]
         if "born" in columns:
             detail = _life(row[columns.index("born")], row[columns.index("died")])
+            #and, when the question was about rulers, the years they actually
+            #ruled - the lifespan says who was alive, the reign says who was
+            #in charge, and for "who was the ruler when X" only the second is
+            #an answer
+            if "office" in columns:
+                held = _held(*(row[columns.index(c)]
+                               for c in ("office", "held_from", "held_to")))
+                detail = f"{detail}, {held}" if held else detail
         elif "year" in columns:
             year = row[columns.index("year")]
             detail = _year(year) if year is not None else None
@@ -166,7 +191,17 @@ def _listing(columns, rows, limit=None) -> str:
             detail = None
         shown.append(f"{name} ({detail})" if detail else str(name))
 
-    return f"{total} {noun}: {_join(shown)}."
+    listed = f"{total} {noun}: {_join(shown)}."
+
+    #Name the life the window was taken from. "25 people" asserts a relation
+    #to Newton without saying which Newton or from when to when, and that is
+    #the one part of the answer a reader cannot check against the rows.
+    if "anchor" in columns and rows[0][columns.index("anchor")]:
+        who = rows[0][columns.index("anchor")]
+        span = _life(rows[0][columns.index("anchor_born")],
+                     rows[0][columns.index("anchor_died")])
+        return f"Against {who} ({span}) - {listed}"
+    return listed
 
 
 def describe(columns, rows, limit=None):
@@ -262,6 +297,28 @@ def _self_check() -> int:
         #BC years reach here as negative numbers, from items like the Darius Painter
         (["person", "born", "died", "sitelinks"], [("Darius Painter", -400, -320, 9)],
          "1 person: Darius Painter (400 BC-320 BC)."),
+        #a window taken from another life names that life and its dates, so the
+        #relation the question asked about can be checked against the rows
+        (["person", "born", "died", "anchor", "anchor_born", "anchor_died", "sitelinks"],
+         [("Gottfried Wilhelm Leibniz", 1646, 1716, "Isaac Newton", 1643, 1727, 190)],
+         "Against Isaac Newton (1643-1727) - 1 person:"
+         " Gottfried Wilhelm Leibniz (1646-1716)."),
+        #and a ruler question prints the reign beside the lifespan: Elizabeth
+        #was alive in Newton's window and ruled outside it, which is the whole
+        #difference between the two dates
+        (["person", "born", "died", "anchor", "anchor_born", "anchor_died",
+          "office", "held_from", "held_to", "sitelinks"],
+         [("Peter the Great", 1672, 1725, "Isaac Newton", 1643, 1727,
+           "Tsar of All Russia", 1682, 1721, 200),
+          ("Elizabeth I of Russia", 1709, 1761, "Isaac Newton", 1643, 1727,
+           None, None, None, 150)],
+         "Against Isaac Newton (1643-1727) - 2 people:"
+         " Peter the Great (1672-1725, Tsar of All Russia 1682-1721)"
+         " and Elizabeth I of Russia (1709-1761)."),
+        #an office the extract never closed is left open, not closed at "?"
+        (["person", "born", "died", "office", "held_from", "held_to", "sitelinks"],
+         [("Vladimir Putin", 1952, None, "President of Russia", 2012, None, 300)],
+         "1 person: Vladimir Putin (b. 1952, President of Russia from 2012)."),
     ]
     failures = 0
     for columns, rows, expected in cases:

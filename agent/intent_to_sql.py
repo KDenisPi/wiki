@@ -31,7 +31,7 @@ back to the model rather than get a confidently wrong query.
     ...                                           "entity_mention": "Isaac Newton"}}})
 
 Self-check (builds SQL for a set of intents and runs each one):
-    python intent_to_sql.py --db /home/denis/projects/wiki_data/run6/wiki.duckdb
+    python intent_to_sql.py --db /home/denis/projects/wiki_data/run7/wiki.duckdb
 """
 
 import json
@@ -363,6 +363,50 @@ def _leader_office_exists() -> str:
         f" AND NOT regexp_matches(lower({V_LABEL}), '({LEADER_OFFICE_NOT})')")
 
 
+def _office_period_columns(start: str, end: str) -> list:
+    """The office a leader held during the window the question asked about.
+
+    run7 is the first extract to carry P580/P582 as qualifiers, so a P39 claim
+    can say from when to when it was true. That interval is what a question
+    about rulers is actually asking: "who was the ruler of Russia when Newton
+    was alive" wants a reign, and answering it with a lifespan seats Elizabeth
+    I of Russia - alive from 1709, on the throne only 1741-1761, fourteen years
+    after Newton died - next to Peter the Great, who ruled through his whole
+    adult life.
+
+    Projected, not filtered. The rows that come back are the same rows as
+    before; each one now says which office and for how long, so a reader can
+    see for themselves whether it falls inside the window. Filtering on it
+    would be a larger change than printing it, and would silently drop the 22%
+    of ruler-titled offices the dump never dated.
+
+    Undated offices are left out of the projection rather than guessed at, so
+    a person whose office carries no period prints as a bare lifespan - the
+    honest reading of a claim with no dates on it.
+    """
+    #The same office test _leader_office_exists uses, narrowed to claims that
+    #carry a period and overlap the window. Of those, the one held for most of
+    #the window rather than the one that started first: Ivan the Terrible was
+    #Sovereign of all Russia 1533-1547 and Tsar 1547-1584, and a question about
+    #the 16th century that answers "Sovereign, 1533-1547" has picked the
+    #14 years over the 37.
+    where = (f"""FROM attributes a JOIN value_items v ON v.qid = a."value"
+             WHERE a.qid = i.qid AND a.property = {_lit(POSITION_PROP)}
+               AND regexp_matches(lower({V_LABEL}),
+                                  '^({LEADER_OFFICE_TITLE})( of | |$)')
+               AND NOT regexp_matches(lower({V_LABEL}), '({LEADER_OFFICE_NOT})')
+               AND a.start_year IS NOT NULL
+               AND a.start_year <= {end}
+               AND coalesce(a.end_year, a.start_year) >= {start}
+             ORDER BY least(coalesce(a.end_year, a.start_year), {end})
+                      - greatest(a.start_year, {start}) DESC,
+                      a.start_year
+             LIMIT 1""")
+    return [f"(SELECT {V_LABEL} {where}) AS office",
+            f"(SELECT a.start_year {where}) AS held_from",
+            f"(SELECT a.end_year {where}) AS held_to"]
+
+
 def _attribute_exists(props, match: str) -> str:
     """One attribute filter: is there a row of these properties whose value
     label matches. `match` is an expression over the alias `v`."""
@@ -449,9 +493,14 @@ def _anchor_cte(mention: str) -> str:
     two the tie handed back and answered "before 1948" about half the time.
     Sitelinks separates them 300 to 74 and does not move when a run asks the
     dump for more properties.
+
+    The name comes back beside the dates because a reader cannot check the
+    window otherwise: "people who lived when Newton was alive" is only a
+    verifiable claim once the answer says which Newton, and from when to when.
     """
     return f"""anchor AS (
-    SELECT {_year_expr(BIRTH)} AS born,
+    SELECT coalesce(i."label", i.label_ru) AS who,
+           {_year_expr(BIRTH)} AS born,
            {_year_expr(DEATH)} AS died
     FROM items i
     WHERE {_word_match('coalesce(i."label", i.label_ru)', mention)}
@@ -864,6 +913,9 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     #sentence itself, and the count is kept so that a query with none of it
     #can be told apart from a query with some.
     guard_only = len(where)
+    #whether the answer is a list of rulers, which the projection prints
+    #differently - see _office_period_columns
+    leaders = False
 
     if filters.get("name"):
         name = filters["name"]
@@ -889,6 +941,9 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             if group is LEADER_OCCUPATIONS:
                 #a leader is either filed as one or held the office of one
                 where.append(f"({by_standing} OR {_leader_office_exists()})")
+                #and the office is worth printing beside the answer, so the
+                #select below knows this filter ran
+                leaders = True
             else:
                 where.append(by_standing)
         else:
@@ -977,6 +1032,29 @@ def build_sql(intent: dict, limit: int = 200) -> str:
                   f"{_year_expr(BIRTH)} AS born",
                   f"{_year_expr(DEATH)} AS died"]
         order = "born NULLS LAST"
+        #What the question compared these lives against. A window taken from
+        #another person's life is only checkable if the answer says whose life
+        #and when: "25 people: ..." asserts a relation to Newton without ever
+        #naming the Newton it found or the years it used - and which Newton it
+        #found is exactly what went wrong once already, when the anchor was
+        #ordered by attribute count and Olivia Newton-John kept winning.
+        window = None
+        if any(c.startswith("anchor AS") for c in ctes):
+            select += ["(SELECT who FROM anchor) AS anchor",
+                       "(SELECT born FROM anchor) AS anchor_born",
+                       "(SELECT died FROM anchor) AS anchor_died"]
+            window = ("(SELECT born FROM anchor)",
+                      f"coalesce((SELECT died FROM anchor),"
+                      f" (SELECT born FROM anchor) + {MAX_LIFESPAN})")
+        else:
+            constraint = filters.get("time_constraint") or {}
+            if (constraint.get("type") == "in_range"
+                    and constraint.get("start_year") is not None
+                    and constraint.get("end_year") is not None):
+                window = (str(int(constraint["start_year"])),
+                          str(int(constraint["end_year"])))
+        if leaders and window:
+            select += _office_period_columns(*window)
     else:
         #Show the date the question asked about. A work often carries several
         #dates, and the filter only requires one of them to fall in the window,
@@ -1177,7 +1255,7 @@ def _self_check(db_path: str) -> int:
 
 
 if __name__ == "__main__":
-    db = "/home/denis/projects/wiki_data/run6/wiki.duckdb"
+    db = "/home/denis/projects/wiki_data/run7/wiki.duckdb"
     args = sys.argv[1:]
     if args and args[0] == "--db":
         db = args[1]

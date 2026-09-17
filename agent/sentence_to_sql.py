@@ -694,7 +694,7 @@ def main() -> None:
         default=200,
         help="row limit the composer puts on the query",
     )
-    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run6/wiki.duckdb", help="local DuckDB file to run the SQL against")
+    parser.add_argument("--db", default="/home/denis/projects/wiki_data/run7/wiki.duckdb", help="local DuckDB file to run the SQL against")
     parser.add_argument(
         "--training-log",
         default="sentence_to_sql_stage2_training.jsonl",
