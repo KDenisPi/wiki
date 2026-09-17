@@ -44,6 +44,34 @@ def _life(born, died) -> str:
     return f"{_year(born)}-{_year(died)}"
 
 
+def _overlap(born, died, window_from, window_to) -> str:
+    """The part of a life the question was actually about.
+
+    Only when the window does not already contain the whole life. Someone born
+    and dead inside it was there for all of it, and "1646-1716, overlap
+    1646-1716" says the same thing twice; someone who outlived it by decades
+    was in the answer for a few years and the row should say which.
+
+    Computed here rather than in SQL because least() and greatest() in DuckDB
+    skip NULLs: least(died, 1727) where the death year is missing returns 1727,
+    which would close an open life on the window's own edge and claim a date
+    the extract never had.
+    """
+    if born is None or window_from is None or window_to is None:
+        return ""
+    if born >= window_from and died is not None and died <= window_to:
+        return ""
+    start = max(born, window_from)
+    if died is None:
+        #an unknown death cannot be clipped to the window's end without
+        #inventing the year they died in
+        return f"overlap from {_year(start)}"
+    end = min(died, window_to)
+    if end < start:
+        return ""
+    return f"overlap {_year(start)}-{_year(end)}"
+
+
 def _held(office, held_from, held_to) -> str:
     """How long someone held the office the question asked about.
 
@@ -180,6 +208,14 @@ def _listing(columns, rows, limit=None) -> str:
             #ruled - the lifespan says who was alive, the reign says who was
             #in charge, and for "who was the ruler when X" only the second is
             #an answer
+            #the slice of that life the question asked about, when the
+            #window does not already cover all of it
+            if "window_from" in columns:
+                shared = _overlap(row[columns.index("born")],
+                                  row[columns.index("died")],
+                                  row[columns.index("window_from")],
+                                  row[columns.index("window_to")])
+                detail = f"{detail}, {shared}" if shared else detail
             if "office" in columns:
                 held = _held(*(row[columns.index(c)]
                                for c in ("office", "held_from", "held_to")))
@@ -201,6 +237,12 @@ def _listing(columns, rows, limit=None) -> str:
         span = _life(rows[0][columns.index("anchor_born")],
                      rows[0][columns.index("anchor_died")])
         return f"Against {who} ({span}) - {listed}"
+    #a window of plain years came from the sentence rather than from a life,
+    #so there is no one to name - but the overlaps below are unreadable
+    #without the years they were clipped to
+    if "window_from" in columns and rows[0][columns.index("window_from")] is not None:
+        return (f"In {_year(rows[0][columns.index('window_from')])}"
+                f"-{_year(rows[0][columns.index('window_to')])} - {listed}")
     return listed
 
 
@@ -315,6 +357,34 @@ def _self_check() -> int:
          "Against Isaac Newton (1643-1727) - 2 people:"
          " Peter the Great (1672-1725, Tsar of All Russia 1682-1721)"
          " and Elizabeth I of Russia (1709-1761)."),
+        #the part of a life the question was about, when the window does not
+        #cover all of it - Michael I was in the answer for two years of a
+        #forty-nine year life, Leibniz for the whole of his
+        (["person", "born", "died", "anchor", "anchor_born", "anchor_died",
+          "window_from", "window_to", "sitelinks"],
+         [("Michael I of Russia", 1596, 1645, "Isaac Newton", 1643, 1727, 1643, 1727, 74),
+          ("Gottfried Wilhelm Leibniz", 1646, 1716, "Isaac Newton", 1643, 1727, 1643, 1727, 190)],
+         "Against Isaac Newton (1643-1727) - 2 people:"
+         " Michael I of Russia (1596-1645, overlap 1643-1645)"
+         " and Gottfried Wilhelm Leibniz (1646-1716)."),
+        #a window of plain years names itself, or the clipped interval beside
+        #each life has nothing to be read against
+        (["person", "born", "died", "window_from", "window_to", "sitelinks"],
+         [("Ivan the Terrible", 1530, 1584, 1500, 1599, 120)],
+         "In 1500-1599 - 1 person: Ivan the Terrible (1530-1584)."),
+        #an unknown death cannot be clipped to the window's far edge
+        (["person", "born", "died", "window_from", "window_to", "sitelinks"],
+         [("Someone", 1490, None, 1500, 1599, 3)],
+         "In 1500-1599 - 1 person: Someone (b. 1490, overlap from 1500)."),
+        #all three intervals at once: a life, the part of it in the window,
+        #and the years they actually ruled
+        (["person", "born", "died", "anchor", "anchor_born", "anchor_died",
+          "window_from", "window_to", "office", "held_from", "held_to", "sitelinks"],
+         [("Michael I of Russia", 1596, 1645, "Isaac Newton", 1643, 1727,
+           1643, 1727, "Tsar of All Russia", 1613, 1645, 74)],
+         "Against Isaac Newton (1643-1727) - 1 person:"
+         " Michael I of Russia (1596-1645, overlap 1643-1645,"
+         " Tsar of All Russia 1613-1645)."),
         #an office the extract never closed is left open, not closed at "?"
         (["person", "born", "died", "office", "held_from", "held_to", "sitelinks"],
          [("Vladimir Putin", 1952, None, "President of Russia", 2012, None, 300)],

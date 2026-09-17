@@ -1053,6 +1053,13 @@ def build_sql(intent: dict, limit: int = 200) -> str:
                     and constraint.get("end_year") is not None):
                 window = (str(int(constraint["start_year"])),
                           str(int(constraint["end_year"])))
+        if window:
+            #The window itself, so the answer can say which part of each life
+            #the question was actually about. A person whose life runs past
+            #both ends of the window is in the list for a few years of it, and
+            #"Michael I of Russia (1596-1645)" does not say which few: he and
+            #Newton shared 1643-1645, two years of a forty-nine year life.
+            select += [f"{window[0]} AS window_from", f"{window[1]} AS window_to"]
         if leaders and window:
             select += _office_period_columns(*window)
     else:
