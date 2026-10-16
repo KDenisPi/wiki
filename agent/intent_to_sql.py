@@ -787,9 +787,25 @@ def _time_conditions(target: str, constraint: dict, ctes: list,
             else:
                 raise Unsupported(f"in_range event {event!r}")
             listed = ", ".join(_lit(p) for p in properties)
-            return [f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
-                    f" AND e.property IN ({listed})"
-                    f" AND e.year BETWEEN {int(start)} AND {int(end)})"]
+            window = (f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
+                      f" AND e.property IN ({listed})"
+                      f" AND e.year BETWEEN {int(start)} AND {int(end)})")
+            if event != "alive":
+                #One date is the question, and the other one's sanity is not:
+                #someone born in 1920 was born in 1920 whatever the extract
+                #thinks it knows about their death.
+                return [window]
+            #"Alive in the window" is a claim about a whole life, so it is only
+            #as good as both dates - and the same guard the anchor branch
+            #applies was missing here. "Who was the ruler of Russia in 1600?"
+            #answered with Juan de Bermudez (1401-1600) and Lorenzo Vazquez de
+            #Segovia (1401-1600), 199 years each, and the 17th century answered
+            #with Ivan Susanin (1501-1613) at 112: all of them in because one
+            #date landed in the window while the other says the record cannot
+            #be read. A life that long is a century-precision date or a data
+            #error, which is what MAX_LIFESPAN is for.
+            born, died = _year_expr(BIRTH), _year_expr(DEATH)
+            return [window, f"coalesce({died} - {born}, 0) <= {MAX_LIFESPAN}"]
         return [f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
                 f" AND e.year BETWEEN {int(start)} AND {int(end)})"]
 
