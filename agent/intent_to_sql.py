@@ -334,6 +334,22 @@ def _title_match(column: str, value: str) -> str:
     return f"{column} ILIKE {_lit(pattern)}"
 
 
+def _typo_budget(word: str) -> int:
+    """How many single-character slips a word of this length may carry.
+
+    Similarity ratios do not work here. The rule was
+    jaro_winkler >= 0.9 per word, which reads as strict-but-forgiving and is
+    neither: it passes "Beethowen" for "Beethoven" at 0.956 and refuses
+    "Issak" for "Isaac" at 0.787, because the same one or two wrong letters
+    weigh four times as much in a five-letter name as in a nine-letter one.
+    "Issac", the commonest way to misspell Isaac, scores 0.893 and was refused
+    too. A budget in characters is the same leniency at every length, and it
+    says plainly what it allows: one slip in a short name, two in a longer
+    one, and none at all in three letters, where a slip is a different name.
+    """
+    return 0 if len(word) <= 3 else 1 if len(word) <= 4 else 2
+
+
 def _fuzzy_match(column: str, value: str) -> str:
     """Match a name the sentence spells wrong.
 
@@ -342,10 +358,25 @@ def _fuzzy_match(column: str, value: str) -> str:
     ever find "Ludwig van Beethoven". Each word of the mention has to be close
     to some word of the label; whole-label similarity does not work, because
     "Beethowen" against "Ludwig van Beethoven" scores low on length alone.
+
+    Within a word the test is an edit distance - see _typo_budget - and the
+    first letter has to be right. The initial is what keeps a budget of two
+    from being wild: "Newton" and "Nelson" are two edits apart and both are
+    surnames, so the word alone can never carry the answer. What carries it is
+    that every word of the mention has to match, and that each caller ranks a
+    correctly spelled hit above a close one.
     """
-    parts = [f"len(list_filter(str_split({column}, ' '),"
-             f" w -> jaro_winkler_similarity(w, {_lit(word)}) >= 0.9)) > 0"
-             for word in value.split()]
+    parts = []
+    for word in value.split():
+        word = word.lower()
+        words = f"str_split(lower({column}), ' ')"
+        budget = _typo_budget(word)
+        if not budget:
+            parts.append(f"list_contains({words}, {_lit(word)})")
+            continue
+        parts.append(f"len(list_filter({words},"
+                     f" w -> starts_with(w, {_lit(word[0])})"
+                     f" AND damerau_levenshtein(w, {_lit(word)}) <= {budget})) > 0")
     return "(" + " AND ".join(parts) + ")"
 
 
@@ -508,13 +539,20 @@ def _anchor_cte(mention: str) -> str:
     The name comes back beside the dates because a reader cannot check the
     window otherwise: "people who lived when Newton was alive" is only a
     verifiable claim once the answer says which Newton, and from when to when.
+
+    The mention is matched as it stands, on word boundaries, and a name the
+    sentence spelled wrong is not this function's problem: resolve_names
+    rewrites it to the extract's spelling before the composer ever sees it.
+    The same match here would cost 7-10s a query instead of 0.3s - that
+    module's docstring has the measurements and the reason.
     """
+    label = 'coalesce(i."label", i.label_ru)'
     return f"""anchor AS (
-    SELECT coalesce(i."label", i.label_ru) AS who,
+    SELECT {label} AS who,
            {_year_expr(BIRTH)} AS born,
            {_year_expr(DEATH)} AS died
     FROM items i
-    WHERE {_word_match('coalesce(i."label", i.label_ru)', mention)}
+    WHERE {_word_match(label, mention)}
       AND {_year_expr(BIRTH)} IS NOT NULL
     ORDER BY (SELECT sitelinks FROM sites s WHERE s.qid = i.qid) DESC NULLS LAST,
              (SELECT count(*) FROM attributes a WHERE a.qid = i.qid) DESC
@@ -546,7 +584,9 @@ def _person_cte(name: str, mention: str) -> str:
                   WHERE l.qid = i.qid AND c.domains LIKE {_lit('%person%')})
       AND {_name_match('coalesce(i."label", i.label_ru)', mention)}
       AND {_year_expr(BIRTH)} IS NOT NULL
-    ORDER BY (SELECT sitelinks FROM sites s WHERE s.qid = i.qid) DESC NULLS LAST
+    ORDER BY CASE WHEN {_word_match('coalesce(i."label", i.label_ru)', mention)}
+                  THEN 0 ELSE 1 END,
+             (SELECT sitelinks FROM sites s WHERE s.qid = i.qid) DESC NULLS LAST
     LIMIT 1
 )"""
 
@@ -1231,6 +1271,14 @@ def _self_check(db_path: str) -> int:
         #leader, and "governor-general" was not. Campenhausen is a Swedish
         #military officer who administered Finland; he is here because his
         #citizenship says Russian Empire and his office once said ruler.
+        #the window a named person sets, which is what a misspelling used to
+        #leave NULL - resolve_names.py has the misspelled half of this case
+        ("a name sets the window it is spelled with",
+         intent("person", occupation="physician", location="England",
+                time_constraint={"type": "relative_to_entity",
+                                 "relation": "overlap",
+                                 "entity_mention": "Isaac Newton"}),
+         "William Harvey"),
         ("administering a territory for a sovereign is not ruling",
          intent("person", occupation="leaders", location="Russia",
                 compare_entities={"entities": ["Isaac Newton"],

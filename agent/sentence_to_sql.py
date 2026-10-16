@@ -69,6 +69,7 @@ from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 
 from answer_text import describe as describe_answer  # noqa: E402 - sibling module
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
+from resolve_names import resolve as resolve_names  # noqa: E402 - sibling module
 from model_retry import (  # noqa: E402 - sibling module
     DEFAULT_RETRY_PENALTY,
     was_cut_off,
@@ -367,8 +368,22 @@ def full_run(args: argparse.Namespace) -> None:
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
     logger.info("stage1 intent (extracted):\n%s", intent)
 
+    #Before the intent is used for anything: the names in it are the
+    #sentence's spelling, and the composer matches them literally. This is
+    #ahead of prompt2 on purpose - the prompt, the composed SQL and the
+    #training record all have to be built from the same intent, and an intent
+    #resolved after the prompt was filled would make the record disagree with
+    #what ran. resolve_names has the cost measurements.
+    intent, notes, unplaced = resolve_names(intent, args.db)
+    for note in notes:
+        logger.info("names: %s", note)
+    if notes:
+        logger.info("stage1 intent (names resolved):\n%s", intent)
+
     prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
-    stage2_once(args, intent, prompt2, _lazy_client(args.url2, args.model2, options, args.request_timeout))
+    stage2_once(args, intent, prompt2,
+                _lazy_client(args.url2, args.model2, options, args.request_timeout),
+                unplaced=unplaced)
 
 
 def _ask_stage2(get_client, prompt: str, frequency_penalty: float) -> dict:
@@ -405,7 +420,7 @@ def _ask_stage2(get_client, prompt: str, frequency_penalty: float) -> dict:
 
 
 def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
-                label: str = "") -> None:
+                label: str = "", unplaced: tuple = ()) -> None:
     """Turn one intent into SQL, run it, and record the training example.
 
     What --sql selects:
@@ -428,6 +443,13 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     Shared by full_run and step2_train so a training record always holds the
     prompt the pipeline really sends - a record built from some other prompt is
     worse than no record, since fine-tuning on it teaches the wrong input.
+
+    `unplaced` are names resolve_names could not find under any spelling. They
+    change nothing about the query; they change what an empty result is
+    allowed to claim. Only full_run passes them, because only full_run
+    resolves: step2_train replays curated intents, whose names are already the
+    extract's, and a DB-dependent rewrite of a training input is a worse
+    trade there than the 0.3s it would save.
     """
     gold, reason = (None, "not requested")
     if args.sql in ("composer", "both"):
@@ -471,6 +493,13 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     #only part of this output a person reads first.
     if db_result["status"] == "success":
         answer = describe_answer(db_result["columns"], db_result["rows"], args.limit)
+        if unplaced and not db_result["rows"]:
+            #"nothing matches" is a claim about the extract, and it is the
+            #wrong claim when the question named someone the extract has
+            #never heard of under any spelling. Say which name that was.
+            answer = ("No one in the extract is called "
+                      + " or ".join(repr(name) for name in unplaced)
+                      + ", so there is nothing to answer this against.")
         if answer:
             logger.info("%sanswer: %s", label, answer)
 
