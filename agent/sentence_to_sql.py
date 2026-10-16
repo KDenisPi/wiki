@@ -665,11 +665,14 @@ def main() -> None:
                         "model is served by llama-server rather than Ollama. Both speak the same "
                         "OpenAI /v1/chat/completions API, so only the address and the naming "
                         "differ. Pass the same value as --url to put both stages back on one server")
-    parser.add_argument("--max-tokens1", type=int, default=4096,
+    parser.add_argument("--max-tokens1", type=int, default=8192,
                         help="cap on a stage-1 reply. Far above --max-tokens because a reasoning "
                         "model spends the budget thinking first and those tokens count: qwen3.6 "
                         "on a stage-1 prompt wrote 3904 characters of reasoning and an empty "
-                        "answer at 1024, and a correct intent at 4096")
+                        "answer at 1024, a correct intent at 4096, and on 'physicians in England "
+                        "who lived in the 18th century with Percivall Willughby' spent the whole "
+                        "of 4096 on reasoning and answered with a bare '{' - the same sentence "
+                        "needs 4237 and answers correctly at 8192")
     parser.add_argument("--max-tokens", type=int, default=1024,
                         help="cap on a model reply, so one that never emits end-of-text is cut off "
                         "in seconds instead of generating until the context is full. 1024 is well "
