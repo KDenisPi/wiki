@@ -16,6 +16,9 @@ Convert the user's question into a structured JSON query intent. Extract:
     "Where was X born / built / held" -> "location"
     "Where did X live", "which countries did X live in", "where has X worked" -> "places"
     "Who", "Which", "What ...", "How many", or any yes/no comparison -> null
+    "Provide a list of ...", "List ...", "Give me ...", "Show ..." -> null, because the list
+      itself is the answer. The word after it is the occupation, not the target's name:
+      "Provide a list of physicians in England ..." is occupation "physician", name null.
   (e.g. "When did Beethoven write Symphony 5?" -> "time"; "Where was Einstein born?" -> "location";
   "Who wrote Symphony 5?" -> null, because the person is the thing returned, not an attribute.)
   "location" and "places" differ by how many answers the question wants: one defining place,
@@ -197,6 +200,13 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
     - type "relative_to_entity": timeframe defined relative to exactly ONE fixed named entity mentioned
       in the sentence (overlap/before/after), used to find an open-ended set of other entities — e.g.
       "composers before Beethoven" (find all such composers). Not resolved to a date.
+      "at the same time as X", "when X lived", "during X's life", "who lived with X" are this, with
+      relation "overlap" and entity_mention X; "before X" and "after X" are this too, with relation
+      "before" and "after" - all three are the same field and differ only in the relation. X is the anchor and NOT the target, so filters.name
+      stays null and answer_field stays null: the sentence asks for the other people, not for
+      anything about X. "Provide a list of physicians in England who lived at the same time as
+      Robert Hooke" -> occupation "physician", location "England", time_constraint
+      {"type": "relative_to_entity", "relation": "overlap", "entity_mention": "Robert Hooke"}.
     - century convention: "Nth century" -> start_year = (N-1)*100 + 1, end_year = N*100
       (so "19th century" = 1801-1900)
     - decade convention: "the YYYYs" -> start_year = YYYY0, end_year = YYYY9
@@ -220,7 +230,10 @@ FIELD-TO-FILTER MAPPING (stage1 JSON output)
   to each other — rather than using one named entity as a fixed anchor for an open-ended list (that
   case is time_constraint.relative_to_entity instead; see its note above). entities is the literal
   list of every named entity being compared, in the order mentioned in the sentence — never drop one
-  to keep another. occupation/domain/location may still be filled in from a shared descriptor
+  to keep another. Every value in entities must be a NAME THAT APPEARS IN THE SENTENCE, and a
+  common noun is never one: "physicians", "composers" and "scientists" are filters.occupation.
+  Never add an entity the sentence does not mention, and never invent a second one to compare the
+  first against — one named entity means this field is null. occupation/domain/location may still be filled in from a shared descriptor
   explicitly stated in the sentence (e.g. "composers" -> occupation: "composer") — leave them null if
   the sentence gives no such descriptor, even if it's common knowledge. time_constraint should be left
   null whenever compare_entities is used — the comparison itself lives entirely in compare_entities.
