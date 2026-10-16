@@ -1,1 +1,1 @@
-Fix grammar error and typo for the sentence below. Do not do anything else. Just grammar check. Avoid explanation. Sentence: {{SENTENCE}}
+Fix grammar errors and typos in the sentence below. Change nothing else. Keep every number written as digits, including ordinals such as 19th. Do not rephrase a sentence that is already correct. Avoid explanation. Sentence: {{SENTENCE}}

@@ -113,13 +113,23 @@ def _differences(before: str, after: str) -> list:
 
 
 def _self_check(url: str, model: str, context: str) -> int:
-    """Correct a spread of questions and show exactly what came back.
+    """Correct a spread of questions, and check it corrected only those.
 
-    A report as much as a test. The step has no guards by design, so what
-    matters is being able to see whether the model did only what it was
-    asked - every correction is printed with what changed in it, and the
-    only failures are a reply that was empty or not one line, plus the two
-    misspellings this step exists for.
+    A report as much as a test: the step has no guards by design, so every
+    correction is printed with what changed in it. What is asserted is what
+    the prompt promises - the typos are fixed, the words that were already
+    right survive, every number stays a number, and a sentence with nothing
+    wrong comes back untouched.
+
+    The last two are the ones that cost a prompt revision to win. The first
+    wording lost them: "in the 19th century" came back as "during the
+    nineteenth century", "select 10" as "select ten", "composer" as
+    "artist", "Percivall" as "Percival", and "discovered" grew into "is
+    credited with discovering" - all of them on input that needed no
+    correcting, which is where this model is least safe. Naming the ordinal
+    in the prompt is what finally held: 12/12 here and 0 of 12 lost across
+    three consecutive runs, where the first wording lost 3 and rewrote 4 of
+    the 5 already-correct sentences.
     """
     import sys
     from pathlib import Path
@@ -136,33 +146,49 @@ def _self_check(url: str, model: str, context: str) -> int:
     def ask(sentence):
         return client.chat_once(template.replace("{{SENTENCE}}", sentence))
 
-    #(sentence, words that have to be in the result)
+    #(sentence, what has to survive it, is it already correct English)
     cases = [
         ("Provide list of sientists in England who lived on the same time as Issak Newton?",
-         ["scientists"]),
+         ["scientists", "England"], False),
+        ("Provide list of physican in England who lived on 18th centery with"
+         " Percivall Willughby", ["physician", "18th", "Percivall Willughby"], False),
         ("Provide list of physican in England who lived on the same time as Robert Hooke did",
-         ["physician"]),
+         ["physician", "Robert Hooke"], False),
         ("Provide list of physician in England who lived on the same time as Issak Newton live?"
-         " If it is possible select 10 the most popular.", ["physician"]),
-        ("Which composers lived at the same time as Beethowen?", ["Beethoven"]),
-        ("Provide list of composer in Germany", ["composer"]),
-        #already correct English, which is where an eager model shows itself
-        ("Who was the ruler of Russia in 1600?", ["Russia"]),
-        ("Which Russian composers lived in the 19th century?", ["composers"]),
-        #a real word the asker may have meant differently, and a rare name:
-        #both now reach stage 1 as the model leaves them
-        ("Which physician discovered the law of gravity?", []),
-        ("Which composer painted the ceiling of the Sistine Chapel?", []),
-        ("Which physicians lived at the same time as Percivall Willughby?", []),
+         " If it is possible select 10 the most popular.", ["physician", "10"], False),
+        ("Which composers lived at the same time as Beethowen?", ["Beethoven"], False),
+        ("Provide list of composer in Germany", ["composer", "Germany"], False),
+        ("Which Russian composers lived in 19th centery?", ["19th", "century"], False),
+        #correct English, which is where an eager model shows itself: a word
+        #swapped for another word, a number spelled out, a rare name
+        #"corrected" into a commoner one, a verb grown into a clause
+        ("Which Russian composers lived in the 19th century?", ["19th"], True),
+        ("Who was the ruler of Russia in 1600?", ["1600", "Russia"], True),
+        ("Which physician discovered the law of gravity?", ["physician"], True),
+        ("Which composer painted the ceiling of the Sistine Chapel?", ["composer"], True),
+        ("Which physicians lived at the same time as Percivall Willughby?",
+         ["Percivall Willughby"], True),
     ]
 
+    def held(needle, text):
+        #a plural is a grammar fix and not a loss: "physician" to
+        #"physicians" is what this step is for, "composer" to "artist" is not
+        return bool(re.search(rf"\b{re.escape(needle)}(s|es)?\b", text, re.I))
+
+    def same_question(before, after):
+        return before.strip().rstrip(".?").lower() == after.strip().rstrip(".?").lower()
+
     failures = 0
-    for sentence, want in cases:
+    for sentence, must, already_right in cases:
         fixed, note = fix(sentence, ask)
-        missing = [w for w in want if w.lower() not in fixed.lower()]
-        if missing or not fixed or "\n" in fixed:
-            print(f"FAIL {sentence[:56]!r}\n     -> {fixed!r}"
-                  + (f"\n     missing {missing}" if missing else ""))
+        lost = [w for w in must if not held(w, fixed)]
+        rewritten = already_right and not same_question(sentence, fixed)
+        if lost or rewritten or not fixed or "\n" in fixed:
+            print(f"FAIL {sentence[:56]!r}\n     -> {fixed!r}")
+            if lost:
+                print(f"     lost {lost}")
+            if rewritten:
+                print("     rewrote a sentence that was already correct")
             failures += 1
             continue
         changed = _differences(sentence, fixed) if note else []
