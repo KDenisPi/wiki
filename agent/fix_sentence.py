@@ -67,16 +67,29 @@ def _distance(a: str, b: str) -> int:
 
 
 def _names(text: str) -> list:
-    """The capitalised words, minus the ones capitalised by position.
+    """The capitalised phrases, minus the words capitalised by position.
 
     A name is where a correction does the most damage, and the first word of
     every sentence is capitalised for reasons that have nothing to do with
     being one - so "Provide" and "Which" are skipped and "Newton" is not.
+
+    Runs of capitalised words are kept together, because a single word is
+    not a name and cannot be checked like one: "Issak" on its own is a word
+    the extract carries - Friedrich Issak, seven sitelinks - while "Issak
+    Newton" is a name it has never heard of.
     """
     found = []
     for part in re.split(r"[.?!]+", text):
-        words = re.findall(r"[A-Za-z][A-Za-z'-]*", part)
-        found.extend(w for w in words[1:] if w[:1].isupper())
+        run = []
+        for word in re.findall(r"[A-Za-z][A-Za-z'-]*", part)[1:]:
+            if word[:1].isupper():
+                run.append(word)
+                continue
+            if run:
+                found.append(" ".join(run))
+                run = []
+        if run:
+            found.append(" ".join(run))
     return found
 
 
@@ -104,7 +117,17 @@ def _tidy(reply: str) -> str:
     return ""
 
 
-def _acceptable(original: str, corrected: str):
+def _held(name: str, text: str) -> bool:
+    """Is this name still in the sentence - on its own or inside a longer one.
+
+    "Newton" becoming "Isaac Newton" is a name expanded, not a name replaced,
+    and refusing that correction was wrong. A word-bounded search says so,
+    where comparing lists of phrases could not.
+    """
+    return bool(re.search(rf"\b{re.escape(name)}\b", text, re.I))
+
+
+def _acceptable(original: str, corrected: str, known=None, occupation=None):
     """None if the correction may be used, or the reason it may not.
 
     Three ways a reply is not a correction of this sentence, all of them seen
@@ -146,22 +169,52 @@ def _acceptable(original: str, corrected: str):
     #"France" is not a spelling of anything.
     kept_names = _names(corrected)
     for name in _names(original):
-        if name in kept_names:
+        if _held(name, corrected):
             continue
-        budget = _typo_budget(name)
+        #A name the extract already uses is not a misspelling of anything,
+        #and no edit distance can say so: "Percivall Willughby" to "Percival
+        #Willughby" is one edit, exactly like "Issak" to "Isaac", and the
+        #first is a real physician while the second is a typo. Only the dump
+        #knows which, and asking it costs 0.33s - see resolve_names.carried.
+        if known and known(name):
+            return f"the extract carries {name!r} as written"
+        budget = sum(_typo_budget(word) for word in name.split())
         if any(_distance(name.lower(), other.lower()) <= budget
                for other in kept_names):
             continue
         return f"{name!r} was replaced rather than respelled"
+
+    #And the same question for the words that are not names. An occupation
+    #swapped for another occupation is the failure this whole layer was
+    #argued about: "physician" for "physicist" is two edits, inside the
+    #budget that "Issak" to "Isaac" needs, so distance cannot tell them
+    #apart - but the extract files people under both words, and under
+    #neither "physicians" nor "sientists", which is exactly the line between
+    #a word respelled and a word replaced. Only asked when something
+    #occupational went missing, so a correction that touched no such word
+    #costs nothing.
+    if occupation:
+        dropped = [w for w in before if not _held(w, corrected) and occupation(w)]
+        if dropped:
+            gained = [w for w in after if not _held(w, original) and occupation(w)]
+            if gained:
+                return (f"{dropped[0]!r} became {gained[0]!r}, and the extract files"
+                        f" people under both - that is a different question")
     return None
 
 
-def fix(sentence: str, ask) -> tuple:
+def fix(sentence: str, ask, known=None, occupation=None) -> tuple:
     """(sentence, note): the question corrected, or exactly as it arrived.
 
     `ask` is a callable taking the filled prompt and returning the reply, so
     that this module does not own a client, a URL or a model name - the
     pipeline passes its own, and the self-check passes one of its own too.
+    `known` and `occupation` are the same arrangement for the database: two
+    callables answering "does the extract use this name, spelled like this?"
+    and "does it file people under this word?". They are what separate a
+    word corrected from a word replaced. Without them the sentence is still
+    corrected, and a plausible wrong name or a swapped occupation can get
+    through - resolve_names.carried and .occupations build them.
 
     A note is returned whenever the sentence changed or a reply was refused,
     because both are things a reader of the log needs to see: the first says
@@ -176,7 +229,7 @@ def fix(sentence: str, ask) -> tuple:
         return sentence, f"not corrected ({e})"
 
     corrected = _tidy(reply or "")
-    refused = _acceptable(sentence, corrected)
+    refused = _acceptable(sentence, corrected, known, occupation)
     if refused:
         return sentence, f"kept the question as typed - {refused}"
     if corrected.lower() == sentence.lower():
@@ -184,7 +237,7 @@ def fix(sentence: str, ask) -> tuple:
     return corrected, f"corrected to {corrected!r}"
 
 
-def _self_check(url: str, model: str, context: str) -> int:
+def _self_check(url: str, model: str, context: str, db_path: str) -> int:
     """Correct the questions this layer was asked for, and some it must not.
 
     The sentences below are deliberately not the ones in the prompt's
@@ -199,6 +252,9 @@ def _self_check(url: str, model: str, context: str) -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "AI_agents"))
     from OllamaClient import OllamaClient
 
+    from resolve_names import carried, occupations
+
+    known, occupation = carried(db_path), occupations(db_path)
     template = Path(context).read_text()
     client = OllamaClient(url, model, options={"temperature": 0, "seed": 42,
                                                "max_tokens": 256}, timeout=120)
@@ -215,7 +271,14 @@ def _self_check(url: str, model: str, context: str) -> int:
          " If it is possible select 10 the most popular.",
          ["10"], ["physicist", "physicists"]),
         #a question whose only fault is a name
+        #the misspelling Denis tested by hand, which is a real one - unlike
+        #"physician", which is a word and has to survive untouched
+        ("Provide list of physican in England who lived on the same time as Robert Hooke did",
+         ["physician"], ["physicist", "physican"]),
         ("Which composers lived at the same time as Beethowen?", ["Beethoven"], ["Beethowen"]),
+        #pluralising an occupation is a grammar fix and has to survive the
+        #guard that refuses swapping one occupation for another
+        ("Provide list of composer in Germany", ["composers"], ["artist"]),
         #correct English, which has to come back as it is
         ("Who was the ruler of Russia in 1600?", ["ruler", "Russia", "1600"], []),
         ("Which Russian composers lived in the 19th century?",
@@ -232,7 +295,7 @@ def _self_check(url: str, model: str, context: str) -> int:
 
     failures = 0
     for sentence, want, unwanted in cases:
-        fixed, note = fix(sentence, ask)
+        fixed, note = fix(sentence, ask, known, occupation)
         missing = [w for w in want if w.lower() not in fixed.lower()]
         present = [w for w in unwanted if re.search(rf"\b{re.escape(w)}\b", fixed, re.I)]
         if missing or present:
@@ -255,8 +318,19 @@ def _self_check(url: str, model: str, context: str) -> int:
          " 1598 until his death in 1605, and his reign is remembered for the"
          " famine that began in 1601.", "an answer instead of a correction"),
         ("Who ruled Russia in 1600?", "Who ruled France in 1600?", "a different question"),
+        #one edit, and the only thing that knows it is wrong is the dump
+        ("Which physicians lived at the same time as Percivall Willughby?",
+         "Which physicians lived at the same time as Percival Willughby?",
+         "a real name respelled by one letter"),
+        #the swap this layer exists to not make
+        ("Which physician discovered the law of gravity?",
+         "Which physicist discovered the law of gravity?",
+         "one occupation swapped for another"),
+        ("Which composer painted the ceiling of the Sistine Chapel?",
+         "Which artist painted the ceiling of the Sistine Chapel?",
+         "composer for artist"),
     ]:
-        fixed, note = fix(original, lambda _s, r=reply: r)
+        fixed, note = fix(original, lambda _s, r=reply: r, known, occupation)
         if fixed != original:
             print(f"FAIL guard let {why} through: {fixed!r}")
             failures += 1
@@ -271,6 +345,7 @@ if __name__ == "__main__":
     import sys
     url, model = "http://192.168.1.57:11434", "llama3.1:8b"
     context = "sentence_to_sql_stage0_context.txt"
+    db_path = "/home/denis/projects/wiki_data/run7/wiki.duckdb"
     args = sys.argv[1:]
     while args:
         flag, args = args[0], args[1:]
@@ -280,4 +355,6 @@ if __name__ == "__main__":
             model, args = args[0], args[1:]
         elif flag == "--context":
             context, args = args[0], args[1:]
-    sys.exit(_self_check(url, model, context))
+        elif flag == "--db":
+            db_path, args = args[0], args[1:]
+    sys.exit(_self_check(url, model, context, db_path))

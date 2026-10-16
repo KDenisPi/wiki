@@ -70,7 +70,11 @@ from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 from answer_text import describe as describe_answer  # noqa: E402 - sibling module
 from fix_sentence import fix as fix_sentence  # noqa: E402 - sibling module
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
-from resolve_names import resolve as resolve_names  # noqa: E402 - sibling module
+from resolve_names import (  # noqa: E402 - sibling module
+    carried as names_carried,
+    occupations as names_occupations,
+    resolve as resolve_names,
+)
 from model_retry import (  # noqa: E402 - sibling module
     DEFAULT_RETRY_PENALTY,
     was_cut_off,
@@ -376,9 +380,14 @@ def full_run(args: argparse.Namespace) -> None:
         context0 = Path(args.context0).read_text()
         client0 = OllamaClient(args.url, args.model0, timeout=args.request_timeout,
                                options={**options, "max_tokens": 256})
+        #the two database tests that decide whether a correction is believed:
+        #a name the extract spells this way, and a word it files people
+        #under, are both words stage 0 has no business changing
         sentence, note = fix_sentence(
-            sentence, lambda text: run_stage(client0, "stage0",
-                                             _fill(context0, sentence=text)))
+            sentence,
+            lambda text: run_stage(client0, "stage0", _fill(context0, sentence=text)),
+            known=names_carried(args.db),
+            occupation=names_occupations(args.db))
         if note:
             logger.info("stage0: %s", note)
         if sentence != args.sentence:
