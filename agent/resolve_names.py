@@ -63,6 +63,25 @@ LABEL = 'coalesce(i."label", i.label_ru)'
 #identifies an entity the target is related to, and is matched by word.
 BY_TITLE, BY_WORD = "title", "word"
 
+#A name can be spelled exactly as the extract spells it and still be the
+#wrong name: "Issac Newton" is Q5920600, a Portuguese botanist, 1840-1906,
+#and a reader who typed it meant the other one. So being spelled correctly
+#settles the question only for a name somebody has written about - 25
+#language editions - and otherwise a close name can overrule it, but only by
+#a margin wide enough to be an argument rather than a coin toss. Measured on
+#the names a misspelling is most likely to collide with:
+#
+#    Issac Newton          3 sitelinks   Isaac Newton         300   rewritten
+#    Percivall Willughby   1             Percival Willoughby    2   kept
+#    Fulke Rose            2             Room Full of Roses     2   kept
+#    Esay Ward             0             An essay on the ...    0   kept
+#    John Troutbeck        3             John Troutbeck         3   kept
+#
+#The second line is why the margin is there and the ratio is not 2: Percival
+#Willoughby is a different man, not a spelling of the same one. Twenty times
+#and at least 25 sitelinks keeps Isaac Newton and refuses all four others.
+BELIEVED, DECISIVE = 25, 20
+
 
 def _spelled(mention: str, how: str) -> str:
     """The composer's own test for "this name is in the extract as written"."""
@@ -72,29 +91,55 @@ def _spelled(mention: str, how: str) -> str:
     return _word_match(LABEL, mention)
 
 
-def _resolve_one(con, mention: str, how: str):
-    """(name, note) for one mention: the extract's spelling of it, or None.
+def _best(con, where: str) -> tuple:
+    """(label, sitelinks) for the best known item matching `where`.
 
-    None means no label in the extract is within a typo of the name, which is
+    Ranked by sitelinks for the same reason the anchor is - among the labels a
+    name can reach, the best known is the one a reader meant - and sitelinks
+    rather than row counts because row counts measure what this run of the
+    extract happens to carry. The anchor's docstring has that story.
+    """
+    row = con.execute(
+        f"SELECT {LABEL}, coalesce((SELECT sitelinks FROM sites s"
+        f" WHERE s.qid = i.qid), 0) AS known"
+        f" FROM items i WHERE {where} ORDER BY known DESC LIMIT 1").fetchone()
+    return (row[0], row[1]) if row and row[0] else (None, 0)
+
+
+def _resolve_one(con, mention: str, how: str):
+    """(name, note) for one mention: the name the extract knows, or None.
+
+    None means no label in the extract is within a typo of this one, which is
     worth saying out loud - it is the difference between a question nobody
     answers and a question about nobody.
 
-    The close match is ranked by sitelinks for the same reason the anchor is:
-    among the labels a typo can reach, the best known is the one a question
-    about a typo'd name meant. "Issak Newton" reaches 104 labels and Isaac
-    Newton has 300 sitelinks.
+    A well-known name spelled as the extract spells it is believed, and costs
+    one cheap query. Anything else is compared against the best name within a
+    typo of it: see BELIEVED and DECISIVE for what "well-known" and "better
+    known" have to mean, and why they have to mean something.
     """
-    if con.execute(f"SELECT 1 FROM items i"
-                   f" WHERE {_spelled(mention, how)} LIMIT 1").fetchone():
+    spelled, known = _best(con, _spelled(mention, how))
+    if known >= BELIEVED:
         return mention, None
 
-    row = con.execute(
-        f"SELECT {LABEL} FROM items i WHERE {_fuzzy_match(LABEL, mention)}"
-        f" ORDER BY (SELECT sitelinks FROM sites s WHERE s.qid = i.qid)"
-        f" DESC NULLS LAST LIMIT 1").fetchone()
-    if not row or not row[0]:
-        return None, f"no label in the extract is close to {mention!r}"
-    return row[0], f"read {mention!r} as {row[0]!r}"
+    close, close_known = _best(con, _fuzzy_match(LABEL, mention))
+    if close is None or close == spelled:
+        #nothing closer than what the sentence already said - which for an
+        #unmatched name means the extract has never heard of it
+        if spelled is None:
+            return None, f"no label in the extract is close to {mention!r}"
+        return mention, None
+
+    if spelled is None:
+        return close, f"read {mention!r} as {close!r}"
+
+    if close_known < max(BELIEVED, DECISIVE * max(known, 1)):
+        #spelled the way the extract spells it, and nothing close is better
+        #known by enough to argue the reader meant something else
+        return mention, None
+    return close, (f"read {mention!r} as {close!r}"
+                   f" - {close_known} sitelinks against {known}, and"
+                   f" {mention!r} is a name the extract also carries")
 
 
 def resolve(intent_text: str, db_path: str) -> tuple:
@@ -192,9 +237,22 @@ def _self_check(db_path: str) -> int:
         #question, and the answer already says "Against Issac Newton
         #(1840-1906)" - the anchor prints its dates precisely so that the
         #reader can see which of the two answered.
-        ("a typo that is somebody's actual name is left alone",
+        ("a typo that is somebody's actual name, overruled by a wide margin",
          intent(time_constraint=anchor("Issac Newton")),
-         "Issac Newton", ("filters", "time_constraint", "entity_mention")),
+         "Isaac Newton", ("filters", "time_constraint", "entity_mention")),
+        #and the other direction, which is the easier mistake to make: every
+        #name overruled is a claim that the reader meant someone else.
+        #Percival Willoughby is a different man from Percivall Willughby, two
+        #sitelinks against one, and the margin is what says so.
+        ("a near name that is no better known does not overrule",
+         intent(time_constraint=anchor("Percivall Willughby")),
+         "Percivall Willughby", ("filters", "time_constraint", "entity_mention")),
+        ("nor does a work whose title happens to be close",
+         intent(time_constraint=anchor("Fulke Rose")),
+         "Fulke Rose", ("filters", "time_constraint", "entity_mention")),
+        ("an obscure name the extract carries exactly is kept",
+         intent(time_constraint=anchor("Huntingdon Plumtre")),
+         "Huntingdon Plumtre", ("filters", "time_constraint", "entity_mention")),
         ("a correct name is left exactly as it arrived",
          intent(time_constraint=anchor("Isaac Newton")),
          "Isaac Newton", ("filters", "time_constraint", "entity_mention")),
