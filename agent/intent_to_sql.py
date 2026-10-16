@@ -193,7 +193,7 @@ LEADER_OCCUPATIONS = (
     "head of state", "head of government", "regent",       # 24 / 21 / 345
     "emperor", "king", "queen", "tsar", "president",       # 48 / 532 / 53 / 5 / 95
     "prime minister", "chancellor", "consul", "lord",      # 19 / 526 / 467 / 153
-    "prince", "sultan", "caliph", "khan", "viceroy",       # 54 / 55 / 76 / 42 / 16
+    "prince", "sultan", "caliph", "khan",                  # 54 / 55 / 76 / 42
     "duke", "shah", "pharaoh",                             # 11 / 7 / 3
 )
 
@@ -217,11 +217,22 @@ LEADER_OCCUPATIONS = (
 #collects the American Medical Association, the French Academy of Sciences and
 #the Geological Society of France; excluding those bodies takes the matching
 #offices from 2,383 to 1,897 and leaves the heads of state behind.
+#
+#Two titles are deliberately absent. A viceroy and a governor-general rule a
+#territory FOR a sovereign, which is the opposite of being one, and the labels
+#say so plainly: Governor-General of the Philippines, of the Dutch East Indies,
+#of India, of New Zealand; Viceroy of Sicily, of New Spain, of Peru, of
+#Liangjiang. Between them they reached 1,348 people, 1,333 of whom carry no
+#leader occupation at all and were in the answer on the strength of that one
+#word. It put Baltasar von Campenhausen - a Swedish military officer, filed
+#P106 "military officer", Governor-General of Finland on no recorded dates -
+#in the list of Russia's leaders, along with Gustav Evertsson Horn and Gustaf
+#Fredrik von Rosen, who held that same Finnish office.
 LEADER_OFFICE_TITLE = (
     "tsar|tsarina|tsaritsa|king|queen|emperor|empress|monarch|sovereign|"
     "regent|grand duke|grand prince|doge|sultan|shah|pharaoh|caliph|khan|"
     "president|prime minister|chancellor|head of state|head of government|"
-    "viceroy|governor-general|first secretary|general secretary|supreme leader"
+    "first secretary|general secretary|supreme leader"
 )
 #"collegium" is spelled out beside "college" because it does not contain it -
 #colleg-i-um against colleg-e - and it is the single biggest leak in the
@@ -1215,6 +1226,16 @@ def _self_check(db_path: str) -> int:
                 time_constraint={"type": "in_range", "start_year": 1500,
                                  "end_year": 1599}),
          "Ivan the Terrible"),
+        #And the other direction, which is the easier mistake to make: every
+        #title added to the pattern is a claim that holding it makes someone a
+        #leader, and "governor-general" was not. Campenhausen is a Swedish
+        #military officer who administered Finland; he is here because his
+        #citizenship says Russian Empire and his office once said ruler.
+        ("administering a territory for a sovereign is not ruling",
+         intent("person", occupation="leaders", location="Russia",
+                compare_entities={"entities": ["Isaac Newton"],
+                                  "aspect": "time", "relation": "overlap"}),
+         "-Baltasar von Campenhausen"),
     ]
 
     try:
@@ -1226,11 +1247,15 @@ def _self_check(db_path: str) -> int:
 
     failures = 0
     for title, value, *expect in cases:
-        #a case may name someone who has to be in the answer; those run wide
-        #enough to see them, the rest just have to build and execute
+        #a case may name someone who has to be in the answer, or - written
+        #"-Name" - someone who must not be. Both run wide enough to see the
+        #whole answer; the rest just have to build and execute.
         want = expect[0] if expect else None
+        unwanted = want[1:] if want and want.startswith("-") else None
+        if unwanted:
+            want = None
         try:
-            sql = build_sql(value, limit=1000 if want else 5)
+            sql = build_sql(value, limit=1000 if want or unwanted else 5)
         except Unsupported as e:
             print(f"FAIL {title}: unsupported ({e})")
             failures += 1
@@ -1249,6 +1274,11 @@ def _self_check(db_path: str) -> int:
 
         if want and want not in [r[0] for r in rows]:
             print(f"FAIL {title}: {want!r} is not in the {len(rows)} row(s)")
+            failures += 1
+            continue
+
+        if unwanted and unwanted in [r[0] for r in rows]:
+            print(f"FAIL {title}: {unwanted!r} is in the {len(rows)} row(s)")
             failures += 1
             continue
 
