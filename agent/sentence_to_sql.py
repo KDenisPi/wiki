@@ -345,6 +345,56 @@ def log_training_example(
     logger.info("logged stage2 training example to %s (db_status=%s)", path, db_result["status"])
 
 
+def list_models(url: str, in_use: dict) -> None:
+    """Print the models the server has, and which of them this run would use.
+
+    Written for trying another model without having to remember what is
+    installed or how the server spells it - the name Ollama answers with is
+    the name --model-grammar, --model1 and --model2 take, and a name guessed
+    wrong fails a stage rather than the command line.
+
+    /api/tags is asked first because it carries the size and the parameter
+    count, which is what decides whether a model is worth a stage here, and
+    /v1/models is the fallback: it is all llama-server offers, so --url can
+    be pointed at the stage-2 server and still answer.
+    """
+    import requests
+
+    try:
+        reply = requests.get(f"{url}/api/tags", timeout=30)
+        reply.raise_for_status()
+        models = [{
+            "name": m.get("name") or m.get("model") or "?",
+            "size": m.get("size"),
+            "detail": (m.get("details") or {}),
+        } for m in (reply.json().get("models") or [])]
+    except Exception as tags_failed:             # noqa: BLE001 - fall back and say so
+        logger.info("%s/api/tags did not answer (%s), asking /v1/models", url, tags_failed)
+        try:
+            reply = requests.get(f"{url}/v1/models", timeout=30)
+            reply.raise_for_status()
+            models = [{"name": m.get("id", "?"), "size": None, "detail": {}}
+                      for m in (reply.json().get("data") or [])]
+        except Exception as e:                   # noqa: BLE001 - nothing to print
+            print(f"could not list models at {url}: {e}")
+            return
+
+    if not models:
+        print(f"{url} has no models")
+        return
+
+    print(f"{len(models)} model(s) at {url}:\n")
+    for model in sorted(models, key=lambda m: m["name"].lower()):
+        detail = model["detail"]
+        facts = [str(detail[k]) for k in ("parameter_size", "quantization_level") if detail.get(k)]
+        if model["size"]:
+            facts.append(f"{model['size'] / 1e9:.1f} GB")
+        used = [flag for flag, name in in_use.items() if name == model["name"]]
+        print(f"  {model['name']:<44} {', '.join(facts):<28}"
+              f"{'  <- ' + ', '.join(used) if used else ''}")
+    print("\nPass one of these names to --model-grammar, --model1 or --model2.")
+
+
 def full_run(args: argparse.Namespace) -> None:
     """Run the full sentence -> intent -> SQL pipeline once for args.sentence."""
     context1 = Path(args.context1).read_text()
@@ -714,6 +764,12 @@ def main() -> None:
         help="after a --training-folder run, skip building the *_train.jsonl/*_eval.jsonl "
         "split beside --training-log",
     )
+    parser.add_argument(
+        "--list-models",
+        action="store_true",
+        help="print the models the --url server has, and which this run would use, "
+        "then exit without asking anything of them",
+    )
     parser.add_argument("--model-grammar", default="llama3.1:8b",
                         help="model for step 0, which fixes the question's grammar and typos "
                         "and does nothing else")
@@ -784,6 +840,13 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    if args.list_models:
+        #before anything else: this asks one server one question and is the
+        #one mode that needs no sentence, no database and no second server
+        list_models(args.url, {"--model-grammar": args.model_grammar,
+                               "--model1": args.model1, "--model2": args.model2})
+        return
 
     if args.training_folder:
         step2_train(args)
