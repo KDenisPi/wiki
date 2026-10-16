@@ -68,6 +68,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "AI_agent
 from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 
 from answer_text import describe as describe_answer  # noqa: E402 - sibling module
+from fix_sentence import fix as fix_sentence  # noqa: E402 - sibling module
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
 from resolve_names import resolve as resolve_names  # noqa: E402 - sibling module
 from model_retry import (  # noqa: E402 - sibling module
@@ -83,6 +84,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parent
 #one level up with the rest of the project - they describe the database, not
 #this pipeline, and the loaders and the C++ parser read them too
 PROJECT_DIR = EXAMPLES_DIR.parent
+DEFAULT_CONTEXT0 = EXAMPLES_DIR / "sentence_to_sql_stage0_context.txt"
 DEFAULT_CONTEXT1 = EXAMPLES_DIR / "sentence_to_sql_stage1_context.txt"
 DEFAULT_CONTEXT2 = EXAMPLES_DIR / "sentence_to_sql_stage2_context.txt"
 DEFAULT_SCHEMA = PROJECT_DIR / "db_model.sql"
@@ -362,7 +364,27 @@ def full_run(args: argparse.Namespace) -> None:
     #1024, and a correct intent at 4096. An empty stage-1 reply is worse than a
     #slow one - it looks like a model that cannot read the sentence.
     options1 = {**options, "max_tokens": args.max_tokens1}
-    prompt1 = _fill(context1, sentence=args.sentence)
+
+    #Stage 0: the question's own spelling and grammar, corrected before any
+    #of the three stages reads it. A correction is never required - the
+    #sentence as typed is always answerable, and fix_sentence returns it
+    #unchanged whenever the reply it got was not a correction of it - so this
+    #cannot fail the run, only improve its input. A small cap: the reply is
+    #one sentence, and a model given room to explain its edits will.
+    sentence = args.sentence
+    if args.fix_grammar:
+        context0 = Path(args.context0).read_text()
+        client0 = OllamaClient(args.url, args.model0, timeout=args.request_timeout,
+                               options={**options, "max_tokens": 256})
+        sentence, note = fix_sentence(
+            sentence, lambda text: run_stage(client0, "stage0",
+                                             _fill(context0, sentence=text)))
+        if note:
+            logger.info("stage0: %s", note)
+        if sentence != args.sentence:
+            logger.info("stage0 question: %s", sentence)
+
+    prompt1 = _fill(context1, sentence=sentence)
     client1 = OllamaClient(args.url, args.model1, options=options1,
                            timeout=args.request_timeout)
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
@@ -628,6 +650,8 @@ def main() -> None:
         default="Invention in mathematics in 18 century in Germany",
         help="natural-language question to turn into SQL",
     )
+    parser.add_argument("--context0", default=str(DEFAULT_CONTEXT0),
+                        help="stage 0 context/template file (spelling and grammar)")
     parser.add_argument("--context1", default=str(DEFAULT_CONTEXT1), help="stage 1 context/template file")
     parser.add_argument("--context2", default=str(DEFAULT_CONTEXT2), help="stage 2 context/template file")
     parser.add_argument("--schema", default=str(DEFAULT_SCHEMA), help="DDL/description file for stage 2")
@@ -684,6 +708,14 @@ def main() -> None:
         action="store_true",
         help="after a --training-folder run, skip building the *_train.jsonl/*_eval.jsonl "
         "split beside --training-log",
+    )
+    parser.add_argument("--model0", default="llama3.1:8b",
+                        help="model for stage 0 (correcting the question's spelling and grammar)")
+    parser.add_argument(
+        "--no-fix-grammar",
+        dest="fix_grammar",
+        action="store_false",
+        help="skip stage 0 and read the question exactly as it was typed",
     )
     parser.add_argument("--model1", default="llama3.1:8b", help="model for stage 1 (sentence -> intent)")
     parser.add_argument("--model2",
