@@ -70,11 +70,7 @@ from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 from answer_text import describe as describe_answer  # noqa: E402 - sibling module
 from fix_sentence import fix as fix_sentence  # noqa: E402 - sibling module
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
-from resolve_names import (  # noqa: E402 - sibling module
-    carried as names_carried,
-    occupations as names_occupations,
-    resolve as resolve_names,
-)
+from resolve_names import resolve as resolve_names  # noqa: E402 - sibling module
 from model_retry import (  # noqa: E402 - sibling module
     DEFAULT_RETRY_PENALTY,
     was_cut_off,
@@ -369,25 +365,22 @@ def full_run(args: argparse.Namespace) -> None:
     #slow one - it looks like a model that cannot read the sentence.
     options1 = {**options, "max_tokens": args.max_tokens1}
 
-    #Stage 0: the question's own spelling and grammar, corrected before any
-    #of the three stages reads it. A correction is never required - the
-    #sentence as typed is always answerable, and fix_sentence returns it
-    #unchanged whenever the reply it got was not a correction of it - so this
-    #cannot fail the run, only improve its input. A small cap: the reply is
-    #one sentence, and a model given room to explain its edits will.
+    #Step 0: the question's spelling and grammar, corrected before any of the
+    #three stages reads it, and taken as the model returns it. Nothing here
+    #checks the correction - fix_sentence's docstring has what that costs and
+    #why it is the right shape for this step. A correction is never required,
+    #so a model that is down or says nothing leaves the question as typed and
+    #the run goes on. A small token cap: the reply is one sentence, and a
+    #model given room to explain its edits will.
     sentence = args.sentence
     if args.fix_grammar:
         context0 = Path(args.context0).read_text()
-        client0 = OllamaClient(args.url, args.model0, timeout=args.request_timeout,
+        client0 = OllamaClient(args.url, args.model_grammar,
+                               timeout=args.request_timeout,
                                options={**options, "max_tokens": 256})
-        #the two database tests that decide whether a correction is believed:
-        #a name the extract spells this way, and a word it files people
-        #under, are both words stage 0 has no business changing
         sentence, note = fix_sentence(
             sentence,
-            lambda text: run_stage(client0, "stage0", _fill(context0, sentence=text)),
-            known=names_carried(args.db),
-            occupation=names_occupations(args.db))
+            lambda text: run_stage(client0, "stage0", _fill(context0, sentence=text)))
         if note:
             logger.info("stage0: %s", note)
         if sentence != args.sentence:
@@ -660,7 +653,7 @@ def main() -> None:
         help="natural-language question to turn into SQL",
     )
     parser.add_argument("--context0", default=str(DEFAULT_CONTEXT0),
-                        help="stage 0 context/template file (spelling and grammar)")
+                        help="step 0 context/template file (grammar and typos)")
     parser.add_argument("--context1", default=str(DEFAULT_CONTEXT1), help="stage 1 context/template file")
     parser.add_argument("--context2", default=str(DEFAULT_CONTEXT2), help="stage 2 context/template file")
     parser.add_argument("--schema", default=str(DEFAULT_SCHEMA), help="DDL/description file for stage 2")
@@ -718,13 +711,14 @@ def main() -> None:
         help="after a --training-folder run, skip building the *_train.jsonl/*_eval.jsonl "
         "split beside --training-log",
     )
-    parser.add_argument("--model0", default="llama3.1:8b",
-                        help="model for stage 0 (correcting the question's spelling and grammar)")
+    parser.add_argument("--model-grammar", default="llama3.1:8b",
+                        help="model for step 0, which fixes the question's grammar and typos "
+                        "and does nothing else")
     parser.add_argument(
         "--no-fix-grammar",
         dest="fix_grammar",
         action="store_false",
-        help="skip stage 0 and read the question exactly as it was typed",
+        help="skip step 0 and read the question exactly as it was typed",
     )
     parser.add_argument("--model1", default="llama3.1:8b", help="model for stage 1 (sentence -> intent)")
     parser.add_argument("--model2",

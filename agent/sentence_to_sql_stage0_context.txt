@@ -1,16 +1,1 @@
-Fix the spelling and grammar of the question below. Do nothing else: do not
-answer it, do not explain, do not comment. Reply with the corrected question
-on one line and nothing else. If it is already correct, reply with it exactly
-as it is.
-
-Correct spelling, including the spelling of names. Correct verb forms,
-articles, singular and plural, word order and punctuation.
-
-Change nothing else. A word that is spelled correctly stays, even if you
-believe the asker meant a different word - "physician" is not a misspelling
-of "physicist", "composer" is not a misspelling of "artist", and a king is
-not a tsar. Keep every number as a number. Keep every condition the question
-asks for, and do not add one.
-
-Question: {{SENTENCE}}
-Corrected:
+Fix grammar error and typo for the sentence below. Do not do anything else. Just grammar check. Avoid explanation. Sentence: {{SENTENCE}}

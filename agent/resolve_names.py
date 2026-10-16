@@ -44,15 +44,13 @@ no answer - two outcomes that were both "nothing matches" before.
 
 import json
 import logging
-import re
 
 #The private helpers are imported on purpose. The question this module asks
 #first - "is the name already spelled the way the composer will look for it?"
 #- is only answered correctly by the expression the composer really runs. A
 #copy of the matching rules here would drift, and every drift is either a
 #rewrite of a name that needed none or a name left misspelled.
-from intent_to_sql import (I_LABEL, OCCUPATION_PROP as OCCUPATION, _fuzzy_match,
-                           _lit, _title_match, _word_match)
+from intent_to_sql import I_LABEL, _fuzzy_match, _title_match, _word_match
 
 logger = logging.getLogger(__name__)
 
@@ -106,92 +104,6 @@ def _best(con, where: str) -> tuple:
         f" WHERE s.qid = i.qid), 0) AS known"
         f" FROM items i WHERE {where} ORDER BY known DESC LIMIT 1").fetchone()
     return (row[0], row[1]) if row and row[0] else (None, 0)
-
-
-def carried(db_path: str):
-    """A test for "the extract uses this name, spelled exactly like this".
-
-    Returned as a callable so that the caller can hold it across a run and
-    pay for one connection. fix_sentence uses it to refuse a correction of a
-    name that needed none: llama3.1:8b turns "Percivall Willughby" - a real
-    physician, 1596-1685, spelled the way the extract spells him - into
-    "Percival Willughby", one edit away, which no distance rule can tell
-    apart from "Issak" to "Isaac". The dump can: it carries the first and
-    not the second.
-
-    Bounded on both sides, unlike the composer's match, which is deliberately
-    prefix-happy so that "Newton" reaches "Newton-John". That rule is wrong
-    for this question - \bIssak reaches "Issake Dabore" and would call a
-    misspelling a name - and the question here is whether the extract uses
-    this spelling, not whether a query would find something under it.
-
-    False on any failure, which leaves the correction to be judged on edit
-    distance alone - the behaviour before this test existed.
-    """
-    state = {}
-
-    def known(phrase: str) -> bool:
-        phrase = (phrase or "").strip()
-        if not phrase:
-            return False
-        if phrase not in state:
-            try:
-                if "con" not in state:
-                    import duckdb
-                    state["con"] = duckdb.connect(db_path, read_only=True)
-                pattern = "(?i)\\b" + re.escape(phrase) + "\\b"
-                state[phrase] = bool(state["con"].execute(
-                    f"SELECT 1 FROM items i WHERE regexp_matches({LABEL}, ?)"
-                    f" LIMIT 1", [pattern]).fetchone())
-            except Exception as e:                  # noqa: BLE001 - see docstring
-                logger.warning("names: %r not checked (%s)", phrase, e)
-                state[phrase] = False
-        return state[phrase]
-
-    return known
-
-
-def occupations(db_path: str):
-    """A test for "the extract files people under this word".
-
-    The companion to carried(), for the half of a sentence that is not a
-    name. A question asking for physicians was answered with physicians, and
-    the asker meant physicists - but "physician" is a word, so no spelling
-    rule can touch it and no guard built on edit distance can either:
-    physician to physicist is two edits, the same budget that has to allow
-    "Issak" to "Isaac". What separates them is that both are occupations the
-    extract uses, and swapping one for another is a change of question.
-
-    Measured: composer, physician, physicist, artist, king, painter,
-    scientist and ruler all answer true; on, at, the, same, time, list,
-    lived, who, provide, England, most and popular all answer false. The
-    plural does too - "physicians" is not a P106 value - which is what lets
-    a correction pluralise a word it may not replace.
-
-    False on any failure, like carried().
-    """
-    state = {}
-
-    def known(word: str) -> bool:
-        word = (word or "").strip().lower()
-        if not word:
-            return False
-        if word not in state:
-            try:
-                if "con" not in state:
-                    import duckdb
-                    state["con"] = duckdb.connect(db_path, read_only=True)
-                state[word] = bool(state["con"].execute(
-                    f'SELECT 1 FROM value_items v WHERE lower(v."label") = ?'
-                    f' AND EXISTS (SELECT 1 FROM attributes a'
-                    f' WHERE a."value" = v.qid AND a.property = {_lit(OCCUPATION)})'
-                    f" LIMIT 1", [word]).fetchone())
-            except Exception as e:                  # noqa: BLE001 - see docstring
-                logger.warning("names: %r not checked (%s)", word, e)
-                state[word] = False
-        return state[word]
-
-    return known
 
 
 def _resolve_one(con, mention: str, how: str):
