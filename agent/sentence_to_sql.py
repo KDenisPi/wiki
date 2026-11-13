@@ -209,6 +209,27 @@ def run_stage(client: OllamaClient, stage_name: str, prompt: str) -> str:
     return reply
 
 
+def connect_db(db_path: str):
+    """Open the database for SQL the model may have written.
+
+    Read-only because this only ever SELECTs, and a read-write handle takes an
+    exclusive lock on the file - one pipeline run would otherwise fail the
+    moment a DuckDB CLI, compare_models.py or eval_stage1.py had the same
+    database open, and block them in turn. No file access, because read_only
+    does not stop read_csv('/etc/passwd') or COPY ... TO a file.
+
+    The arrow lambda (w -> ...) is switched back on: DuckDB 2.0 disables it by
+    default, and the stage 2 training data still teaches it, so the model
+    writes it. 1.5 accepts the same setting. 2.1 removes it altogether - the
+    training data has to move to `lambda w:` before that upgrade.
+    """
+    import duckdb
+    connection = duckdb.connect(db_path, read_only=True,
+                                config={"enable_external_access": False})
+    connection.execute("SET lambda_syntax = 'enable_single_arrow'")
+    return connection
+
+
 def run_sql(db_path: str, sql: str, timeout: float) -> dict:
     """Execute `sql` against a local DuckDB file, if the duckdb package is
     installed - its absence is logged and treated as a normal, expected
@@ -229,12 +250,7 @@ def run_sql(db_path: str, sql: str, timeout: float) -> dict:
 
     started = time.perf_counter()
     try:
-        #read-only because this only ever SELECTs, and a read-write handle takes
-        #an exclusive lock on the file - one pipeline run would otherwise fail
-        #the moment a DuckDB CLI, compare_models.py or eval_stage1.py had the
-        #same database open, and block them in turn
-        connection = duckdb.connect(db_path, read_only=True,
-                                    config={"enable_external_access": False})
+        connection = connect_db(db_path)
         timer = threading.Timer(timeout, connection.interrupt)
         timer.start()
         try:

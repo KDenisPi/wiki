@@ -72,6 +72,7 @@ from sentence_to_sql import (  # noqa: E402 - after sys.path fixup
     _intent_text,
     _strip_sql_fence,
     compose_sql,
+    connect_db,
 )
 
 logger = logging.getLogger("compare_models")
@@ -188,9 +189,8 @@ class Db:
     same for both models, and the two often agree with each other as well."""
 
     def __init__(self, path: str, sql_timeout: float, max_rows: int):
-        import duckdb  # imported here so --no-db works without the package
-
-        self.connection = duckdb.connect(path, read_only=True)
+        #connect_db imports duckdb itself, so --no-db still works without the package
+        self.connection = connect_db(path)
         self.sql_timeout = sql_timeout
         self.max_rows = max_rows
         self.cache: dict = {}
