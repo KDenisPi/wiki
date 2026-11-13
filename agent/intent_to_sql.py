@@ -375,7 +375,7 @@ def _fuzzy_match(column: str, value: str) -> str:
             parts.append(f"list_contains({words}, {_lit(word)})")
             continue
         parts.append(f"len(list_filter({words},"
-                     f" w -> starts_with(w, {_lit(word[0])})"
+                     f" lambda w: starts_with(w, {_lit(word[0])})"
                      f" AND damerau_levenshtein(w, {_lit(word)}) <= {budget})) > 0")
     return "(" + " AND ".join(parts) + ")"
 
