@@ -58,6 +58,7 @@ import argparse
 import json
 import logging
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -208,12 +209,17 @@ def run_stage(client: OllamaClient, stage_name: str, prompt: str) -> str:
     return reply
 
 
-def run_sql(db_path: str, sql: str) -> dict:
+def run_sql(db_path: str, sql: str, timeout: float) -> dict:
     """Execute `sql` against a local DuckDB file, if the duckdb package is
     installed - its absence is logged and treated as a normal, expected
     outcome here rather than an error. Returns the outcome (status/error/
     row_count) so the caller can record it alongside the training example -
-    "unavailable" means the SQL was never checked, not that it's wrong."""
+    "unavailable" means the SQL was never checked, not that it's wrong.
+
+    The SQL may be the model's own, so it runs on a leash: interrupted after
+    `timeout` seconds ("timeout"), and with file access switched off -
+    read_only stops writes to the database, not read_csv('/etc/passwd') or
+    COPY ... TO a file anywhere on disk."""
     try:
         import duckdb
     except ImportError:
@@ -227,16 +233,22 @@ def run_sql(db_path: str, sql: str) -> dict:
         #an exclusive lock on the file - one pipeline run would otherwise fail
         #the moment a DuckDB CLI, compare_models.py or eval_stage1.py had the
         #same database open, and block them in turn
-        connection = duckdb.connect(db_path, read_only=True)
+        connection = duckdb.connect(db_path, read_only=True,
+                                    config={"enable_external_access": False})
+        timer = threading.Timer(timeout, connection.interrupt)
+        timer.start()
         try:
             rows = connection.execute(sql).fetchall()
             columns = [d[0] for d in connection.description]
         finally:
+            timer.cancel()
             connection.close()
     except Exception as e:
-        logger.warning("duckdb(%s) failed in %.2fs: %s", db_path, time.perf_counter() - started, e)
-        return {"status": "failed", "error": str(e), "row_count": None,
-                "columns": None, "rows": None}
+        timed_out = "Interrupt" in type(e).__name__
+        error = f"timed out after {timeout:.0f}s" if timed_out else str(e)
+        logger.warning("duckdb(%s) failed in %.2fs: %s", db_path, time.perf_counter() - started, error)
+        return {"status": "timeout" if timed_out else "failed", "error": error,
+                "row_count": None, "columns": None, "rows": None}
 
     logger.info(
         "duckdb(%s) ok in %.2fs - %d row(s), columns=%s",
@@ -560,7 +572,7 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
             sql, source = _strip_sql_fence(completion), "model"
 
     logger.info("%sSQL (%s):\n%s", label, source, sql)
-    db_result = run_sql(args.db, sql)
+    db_result = run_sql(args.db, sql, args.sql_timeout)
 
     #the rows are logged above as tuples, which is what a query returns and not
     #what was asked. One line of English beside them costs nothing and is the
@@ -580,7 +592,7 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     if completion is not None:
         #only the model's own SQL belongs in the training log as a completion
         model_sql = _strip_sql_fence(completion)
-        model_result = db_result if source == "model" else run_sql(args.db, model_sql)
+        model_result = db_result if source == "model" else run_sql(args.db, model_sql, args.sql_timeout)
         log_training_example(args.training_log, args.model2, prompt2, completion,
                              model_sql, model_result, gold_sql=gold, sql_source=source)
 
@@ -818,6 +830,8 @@ def main() -> None:
         help="row limit the composer puts on the query",
     )
     parser.add_argument("--db", default="/home/denis/projects/wiki_data/run7/wiki.duckdb", help="local DuckDB file to run the SQL against")
+    parser.add_argument("--sql-timeout", type=float, default=120.0,
+                        help="seconds a query may run before it is interrupted")
     parser.add_argument(
         "--training-log",
         default="sentence_to_sql_stage2_training.jsonl",
