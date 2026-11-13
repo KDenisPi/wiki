@@ -63,9 +63,37 @@ machine that writes it.
   (`20260922*.jsonl`) still teaches it, so the model writes it.
   `connect_db` in `agent/sentence_to_sql.py` switches it back on with
   `SET lambda_syntax = 'enable_single_arrow'`. **DuckDB 2.1 removes that
-  setting**: before upgrading to 2.1, regenerate the training data with
-  `lambda w:` and retrain stage 2. The composer's own SQL already uses
-  `lambda w:`.
+  setting**: before upgrading to 2.1, fix the training data and retrain
+  stage 2 (below). The composer's own SQL already uses `lambda w:`.
+
+### Moving the training data to `lambda w:`
+
+Planned for the new machine. `fix_training_lambdas.py` rewrites the target SQL
+in `20260922.jsonl`, `20260922_train.jsonl` and `20260922_eval.jsonl` in
+place - 44 distinct queries, 112 lambdas - and leaves every prompt, every
+row and the train/eval split exactly as they were. It takes under a second
+and needs the duckdb package but no database:
+
+    /home/denis/projects/venv-duckdb2/bin/python fix_training_lambdas.py
+    git diff --stat
+
+Before writing, it has DuckDB parse each query in both spellings and stops
+without writing anything unless the two are the same query. Run twice, it
+says `nothing to rewrite`.
+
+`prepare_training_data.py` cannot be used instead: the intents under
+`training/training_intents` have changed since the eval log was written, and
+its rows no longer match them.
+
+Then:
+
+1. Retrain stage 2 from `20260922_train.jsonl` / `20260922_eval.jsonl` the
+   same way as before (Unsloth), export the `.gguf`, and serve it from
+   llama-server (`--url2`, `--model2`).
+2. Check that the new model writes `lambda w:` - its SQL is logged as
+   `SQL (model)`, and `compare_models.py` runs it against the database.
+3. Only then remove the `SET lambda_syntax` line from `connect_db`, so any
+   arrow the model still writes fails loudly instead of working until 2.1.
 
 ## Model servers
 
