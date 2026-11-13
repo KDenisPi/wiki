@@ -42,9 +42,10 @@ Keep the same paths if you can: `/home/denis/projects/wiki`,
 
 ## Python
 
-Python 3.11 with two packages, nothing more:
+Python 3.11 or newer with two packages, nothing more. The venv on gx10-3ec8
+is Python 3.12.3:
 
-    python3.11 -m venv /home/denis/projects/venv-duckdb2
+    python3 -m venv /home/denis/projects/venv-duckdb2
     /home/denis/projects/venv-duckdb2/bin/pip install duckdb==2.0.0 requests
 
 `requests` is needed even with no network question in sight: `OllamaClient`
@@ -59,46 +60,78 @@ machine that writes it.
   on run7 as it is. It opens the database read-only anyway.
 - A file **created** by 2.0 - any `load_duckdb.py` rebuild - uses storage
   version 69, which 1.x cannot open. Upgrade every machine before copying one.
-- 2.0 turns off the arrow lambda (`w -> ...`). The stage 2 training data
-  (`20260922*.jsonl`) still teaches it, so the model writes it.
-  `connect_db` in `agent/sentence_to_sql.py` switches it back on with
-  `SET lambda_syntax = 'enable_single_arrow'`. **DuckDB 2.1 removes that
-  setting**: before upgrading to 2.1, fix the training data and retrain
-  stage 2 (below). The composer's own SQL already uses `lambda w:`.
+- 2.0 turns off the arrow lambda (`w -> ...`), and 2.1 removes it. Nothing
+  here writes it any more: the composer uses `lambda w:`, and so does the
+  stage 2 model served since 2026-11-13, retrained on it (below). `connect_db`
+  in `agent/sentence_to_sql.py` no longer switches the arrow back on, so an
+  arrow from the model fails with `Deprecated lambda arrow (->) detected`
+  instead of working until 2.1.
 
-### Moving the training data to `lambda w:`
+### Retraining stage 2
 
-Planned for the new machine. `fix_training_lambdas.py` rewrites the target SQL
-in `20260922.jsonl`, `20260922_train.jsonl` and `20260922_eval.jsonl` in
-place - 44 distinct queries, 112 lambdas - and leaves every prompt, every
-row and the train/eval split exactly as they were. It takes under a second
-and needs the duckdb package but no database:
+Done on 2026-11-12 to move the model to `lambda w:`, and served since
+2026-11-13; this is how to repeat it. The August model, which writes the
+arrow, is kept in `/home/denis/projects/models/stage2_arrow/` for rollback.
 
-    /home/denis/projects/venv-duckdb2/bin/python fix_training_lambdas.py
-    git diff --stat
+**Data.** `20260922_train.jsonl` (113 rows) and `20260922_eval.jsonl` (25)
+are the exact files the August Unsloth Studio job trained on;
+`20260922.jsonl` (144) is the log they came from. `fix_training_lambdas.py`
+rewrote the target SQL in all three to `lambda w:` and left every prompt
+and row as it was. It has DuckDB parse each query in both spellings and
+writes nothing unless the two are the same query; run again, it says
+`nothing to rewrite`. `prepare_training_data.py` cannot regenerate these
+files: the intents under `training/training_intents` have changed since
+the log was written.
 
-Before writing, it has DuckDB parse each query in both spellings and stops
-without writing anything unless the two are the same query. Run twice, it
-says `nothing to rewrite`.
+**Train** - about 30 minutes. `train_stage2.py` replays the August job's
+settings (QLoRA r=16 on `unsloth/qwen2.5-coder-7b-instruct-bnb-4bit`,
+30 steps) through Studio's own training worker, so it needs Studio's
+interpreter:
 
-`prepare_training_data.py` cannot be used instead: the intents under
-`training/training_intents` have changed since the eval log was written, and
-its rows no longer match them.
+    ~/.unsloth/studio/unsloth_studio/bin/python train_stage2.py --name <name>
 
-Then:
+The adapter lands in `~/.unsloth/studio/outputs/<name>`. The 2026-11-12 run
+ended at eval loss 0.053, against 0.054 in August.
 
-1. Retrain stage 2 from `20260922_train.jsonl` / `20260922_eval.jsonl` the
-   same way as before (Unsloth), export the `.gguf`, and serve it from
-   llama-server (`--url2`, `--model2`).
-2. Check that the new model writes `lambda w:` - its SQL is logged as
-   `SQL (model)`, and `compare_models.py` runs it against the database.
-3. Only then remove the `SET lambda_syntax` line from `connect_db`, so any
-   arrow the model still writes fails loudly instead of working until 2.1.
+The GB10's GPU shares system memory, and CUDA counts only `MemFree` as
+free - not the page cache, which Ollama's model files fill. With too little
+free, loading the model fails with `Some modules are dispatched on the CPU
+or the disk`, so `train_stage2.py` stops first if under 12 GiB is free.
+Drop the cache (`sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'`) and
+check that `MemFree` in `/proc/meminfo` actually rose, or unload an Ollama
+model that can be spared (`ollama stop <model>`).
+
+**Export** - about 4 minutes - to the Q4_K_M `.gguf` llama-server serves:
+
+    ~/.local/bin/unsloth export ~/.unsloth/studio/outputs/<name> \
+        /home/denis/projects/models/<new dir> -f gguf -q q4_k_m
+
+**Compare** before switching. Serve the new `.gguf` on a spare port (`:1236`,
+otherwise the same command as `:1235` below) and run it against the served
+model, first on the log the training rows came from:
+
+    M=/home/denis/projects/models
+    /home/denis/projects/venv-duckdb2/bin/python agent/compare_models.py \
+        --cases 20260922.jsonl --splits 20260922_train.jsonl 20260922_eval.jsonl \
+        --tuned-url http://127.0.0.1:1236 \
+        --tuned-model $M/<new dir>/qwen2.5-coder-7b-instruct.Q4_K_M.gguf \
+        --base-url http://192.168.1.57:1235 \
+        --base-model $M/qwen2.5-coder-7b-instruct.Q4_K_M.gguf
+
+then again without `--cases` and `--splits`, on the 144 intents under
+`training/training_intents`. Each pass takes about an hour. On 2026-11-12
+the two models were right on 85 of 282 cases each, and the new one wrote no
+arrow.
+
+**Switch.** Stop `:1235`, move the old `.gguf` aside, put the new one at the
+path `:1235` serves (so the `--model2` default stays right), start `:1235`
+again and run the checks under "Checking the new machine".
 
 ## Model servers
 
-Nothing runs a model locally. The pipeline calls two servers, both on
-`192.168.1.57` by default:
+The pipeline runs no model itself. It calls two servers, both on
+`192.168.1.57` by default - gx10-3ec8, the machine the project has run on
+since 2026-11-12:
 
 | Stage | Option | Default server | Default model |
 |---|---|---|---|
@@ -110,14 +143,24 @@ llama-server names a model by the `.gguf` path it was started with, so
 `--model2` is a path on the **server**, not on this machine. Under Ollama the
 untuned one is `Qwen2.5-Coder-7B-Instruct-Q4_K_M:latest`.
 
+Ollama runs as a systemd service. The `:1235` llama-server does not - after a
+reboot, start it again from the llama.cpp checkout:
+
+    cd ~/projects/llama.cpp
+    setsid ./build/bin/llama-server \
+        -m /home/denis/projects/models/qwen2.5-coder-7b-instruct.Q4_K_M.gguf \
+        -ngl 99 --host 0.0.0.0 --port 1235 -fa on \
+        --cache-type-k q8_0 --cache-type-v q8_0 > logs/llama.log 2>&1 &
+
 Check that the new machine reaches them:
 
     python agent/sentence_to_sql.py --list-models
 
 ## Checking the new machine
 
-1. The composer self-check - 28 checks against the database, about 4-5 minutes
-   on 12 cores. It must end with `all checks passed`:
+1. The composer self-check - 28 checks against the database, about 1 minute
+   on gx10-3ec8's 20 cores, 4-5 minutes on 12. It must end with
+   `all checks passed`:
 
        /home/denis/projects/venv-duckdb2/bin/python agent/intent_to_sql.py
 

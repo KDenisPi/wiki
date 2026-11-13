@@ -218,16 +218,14 @@ def connect_db(db_path: str):
     database open, and block them in turn. No file access, because read_only
     does not stop read_csv('/etc/passwd') or COPY ... TO a file.
 
-    The arrow lambda (w -> ...) is switched back on: DuckDB 2.0 disables it by
-    default, and the stage 2 training data still teaches it, so the model
-    writes it. 1.5 accepts the same setting. 2.1 removes it altogether - the
-    training data has to move to `lambda w:` before that upgrade.
+    Lambdas are DuckDB's default `lambda w: ...` form only. The stage 2 model
+    served since 2026-11-13 was trained on it; the arrow form (w -> ...) the
+    one before wrote is off by default in 2.0 and gone in 2.1, and is no
+    longer switched back on here.
     """
     import duckdb
-    connection = duckdb.connect(db_path, read_only=True,
-                                config={"enable_external_access": False})
-    connection.execute("SET lambda_syntax = 'enable_single_arrow'")
-    return connection
+    return duckdb.connect(db_path, read_only=True,
+                          config={"enable_external_access": False})
 
 
 def run_sql(db_path: str, sql: str, timeout: float) -> dict:
