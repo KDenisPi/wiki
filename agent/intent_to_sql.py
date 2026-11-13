@@ -286,6 +286,73 @@ OCCUPATION_GROUPS = {
     "head of state": LEADER_OCCUPATIONS, "heads of state": LEADER_OCCUPATIONS,
     "ruler": LEADER_OCCUPATIONS, "rulers": LEADER_OCCUPATIONS,
 }
+
+#A ruler's title asked for by name - "France kings", "Russian tsars", "French
+#presidents" - is an office someone held, not a standing they are filed under.
+#Matched as a P106 label, "king" answered "the kings of France while Montaigne
+#was alive" with Margaret of Valois-Angoulême, Henri II of Navarre and Mary of
+#Lorraine, and with none of the six kings: they are filed "monarch",
+#"sovereign" or nothing at all, and the kingship is in P39, "king of France
+#1547-1559". So the title is read off the office, and the office has to have
+#been held in the window the question asks about (_title_office_exists).
+#
+#Each word maps to the office titles that mean it, and to the sex the word
+#implies. Most European thrones are not "king of" at all but "monarch of
+#England", "Monarch of Sweden", "monarch of the Crown of Aragon" - Mary I,
+#Elizabeth I and Lady Jane Grey hold nothing else - so king and queen read
+#"monarch" and "sovereign" too, and P21 tells the two words apart. A title
+#that is not gendered on the throne keeps everyone who held it: Catherine I is
+#one of Russia's emperors, Irina Godunova one of its tsars.
+#
+#The last flag says the office must carry a date. A modern head of state's
+#always does - not one holder of President of the United States, of the
+#French Republic or of Germany, Prime Minister of the United Kingdom or of
+#France, or Chancellor of Germany lacks a dated claim - and the undated
+#"president of ..." offices are academies, clubs and companies: 145 of the
+#268 rows "French presidents of the 20th century" first came back with. A
+#throne is the other way round: 333 of 406 pharaohs hold theirs undated, so
+#an undated office still counts there.
+SEX_PROP = "P21"
+TITLE_OFFICES = {}
+for _words, _titles, _sex, _dated in (
+        (("king", "kings"), "king|monarch|sovereign", "male", False),
+        (("queen", "queens"), "queen|monarch|sovereign", "female", False),
+        (("emperor", "emperors"), "emperor|empress", None, False),
+        (("empress", "empresses"), "empress|emperor", "female", False),
+        (("tsar", "tsars", "czar", "czars"), "tsar|tsarina|tsaritsa", None, False),
+        (("tsarina", "tsarinas", "tsaritsa", "tsaritsas"), "tsarina|tsaritsa|tsar", "female", False),
+        (("sultan", "sultans"), "sultan", None, False),
+        (("shah", "shahs"), "shah", None, False),
+        (("pharaoh", "pharaohs"), "pharaoh", None, False),
+        (("caliph", "caliphs"), "caliph", None, False),
+        (("khan", "khans"), "khan", None, False),
+        (("doge", "doges"), "doge", None, False),
+        (("grand duke", "grand dukes"), "grand duke", None, False),
+        (("grand prince", "grand princes"), "grand prince", None, False),
+        (("president", "presidents"), "president", None, True),
+        (("prime minister", "prime ministers"), "prime minister", None, True),
+        (("chancellor", "chancellors"), "chancellor", None, True)):
+    for _word in _words:
+        TITLE_OFFICES[_word] = (_titles, _sex, _dated)
+del _words, _titles, _sex, _dated, _word
+
+#Offices that start with a head of state's title and belong to a body inside
+#the state - a chamber, a regional parliament, a learned society in its own
+#language. Only for a title asked by name: "President of the Council" is
+#France's head of government and stays among its leaders, but it is not one
+#of its presidents. The German words are what "German presidents of the 20th
+#century" held most besides the presidency: 45 presidents of the Bundesrat,
+#13 of Berlin's Abgeordnetenhaus, 10 of the Bundestag, 17 of Landtage. With
+#these and the dates, French presidents of the 20th century are 87 rows with
+#every president of the Republic in them, the rest mostly presidents of
+#Algeria, Dahomey or Madagascar born French - "France" is matched on the
+#person, as everywhere.
+TITLE_OFFICE_NOT = (
+    "senate|assembly|parliament|congress|council|convention|pro tempore|"
+    "cortes|diet|bundesrat|bundestag|landtag|abgeordnetenhaus|reichstag|duma|sejm|"
+    "prefecture|société|académie|comité|institut|organisation|organization|"
+    "agency|authority|students"
+)
 #What a thing is about, or what form it takes. P921 and P136 say what a work is
 #ABOUT; P7937 says what it IS, and it is the only one of the three that does -
 #nothing else in the extract carries the textual and musical forms. It is worth
@@ -421,19 +488,51 @@ def _occupation_area_exists(area: str) -> str:
             f" AND list_contains(str_split(oa.areas, '|'), {_lit(area)}))")
 
 
-def _leader_office_exists() -> str:
-    """Did this person hold an office whose name is a ruler's title.
+def _office_match(titles: str = LEADER_OFFICE_TITLE, also_not: str = "") -> str:
+    """Is this office label one of these titles, and not an organisation's.
 
     The title has to start the label - "Tsar of All Russia" - so that "deputy
     to the president" and "king's counsel" do not read as the office itself.
+    "Federal" may come first: Adenauer, Brandt, Kohl and Merkel held nothing
+    but "Federal Chancellor of Germany", and the only other office it lets in
+    is the Federal Chancellor of Austria.
     """
-    return _attribute_exists(
-        (POSITION_PROP,),
-        f"regexp_matches(lower({V_LABEL}), '^({LEADER_OFFICE_TITLE})( of | |$)')"
-        f" AND NOT regexp_matches(lower({V_LABEL}), '({LEADER_OFFICE_NOT})')")
+    excluded = LEADER_OFFICE_NOT + (f"|{also_not}" if also_not else "")
+    return (f"regexp_matches(lower({V_LABEL}), '^(federal )?({titles})( of | |$)')"
+            f" AND NOT regexp_matches(lower({V_LABEL}), '({excluded})')")
 
 
-def _office_period_columns(start: str, end: str) -> list:
+def _leader_office_exists() -> str:
+    """Did this person hold an office whose name is a ruler's title."""
+    return _attribute_exists((POSITION_PROP,), _office_match())
+
+
+def _title_office_exists(title: tuple, window: tuple = None) -> str:
+    """Did this person hold the office the question names, while it asked.
+
+    `title` is a TITLE_OFFICES entry. The office has to fall in the window
+    when it carries dates - Irina Godunova was Tsar of All Russia in 1598 and
+    is not one of the 17th century's tsars for having lived until 1603 - and
+    an office with no dates is let through on the person's lifespan, which
+    the time filter has already tested, because a quarter of ruler offices
+    carry none.
+    """
+    titles, sex, dated = title
+    match = _office_match(titles, TITLE_OFFICE_NOT)
+    if dated:
+        match += " AND a.start_year IS NOT NULL"
+    if window:
+        start, end = window
+        match += (f" AND (a.start_year IS NULL OR (a.start_year <= {end}"
+                  f" AND coalesce(a.end_year, a.start_year) >= {start}))")
+    condition = _attribute_exists((POSITION_PROP,), match)
+    if sex:
+        condition += f" AND {_attribute_exists((SEX_PROP,), f'{V_LABEL} = {_lit(sex)}')}"
+    return condition
+
+
+def _office_period_columns(start: str, end: str, titles: str = LEADER_OFFICE_TITLE,
+                           also_not: str = "") -> list:
     """The office a leader held during the window the question asked about.
 
     run7 is the first extract to carry P580/P582 as qualifiers, so a P39 claim
@@ -454,17 +553,16 @@ def _office_period_columns(start: str, end: str) -> list:
     a person whose office carries no period prints as a bare lifespan - the
     honest reading of a claim with no dates on it.
     """
-    #The same office test _leader_office_exists uses, narrowed to claims that
-    #carry a period and overlap the window. Of those, the one held for most of
-    #the window rather than the one that started first: Ivan the Terrible was
-    #Sovereign of all Russia 1533-1547 and Tsar 1547-1584, and a question about
-    #the 16th century that answers "Sovereign, 1533-1547" has picked the
-    #14 years over the 37.
+    #The same office test the filter used - every ruler title for the leader
+    #group, the one title for a question that named it - narrowed to claims
+    #that carry a period and overlap the window. Of those, the one held for
+    #most of the window rather than the one that started first: Ivan the
+    #Terrible was Sovereign of all Russia 1533-1547 and Tsar 1547-1584, and a
+    #question about the 16th century that answers "Sovereign, 1533-1547" has
+    #picked the 14 years over the 37.
     where = (f"""FROM attributes a JOIN value_items v ON v.qid = a."value"
              WHERE a.qid = i.qid AND a.property = {_lit(POSITION_PROP)}
-               AND regexp_matches(lower({V_LABEL}),
-                                  '^({LEADER_OFFICE_TITLE})( of | |$)')
-               AND NOT regexp_matches(lower({V_LABEL}), '({LEADER_OFFICE_NOT})')
+               AND {_office_match(titles, also_not)}
                AND a.start_year IS NOT NULL
                AND a.start_year <= {end}
                AND coalesce(a.end_year, a.start_year) >= {start}
@@ -769,6 +867,31 @@ def _compare_query(compare: dict) -> str:
             + "SELECT " + ",\n       ".join(select) + "\nFROM e1, e2;")
 
 
+def _window(filters: dict, ctes: list, lived_through: bool = False):
+    """The years the question is about, as two SQL expressions, or None.
+
+    A named person's lifespan when the time filter was built from one (the
+    anchor CTE), otherwise an in_range's own years. With lived_through, only a
+    window the answer has to have lived THROUGH counts - "alive with
+    Montaigne", "in the 16th century" - and not "before Montaigne" or "born in
+    the 16th century", whose years say nothing about when an office was held.
+    """
+    constraint = filters.get("time_constraint") or {}
+    if any(c.startswith("anchor AS") for c in ctes):
+        if lived_through and constraint.get("relation") != "overlap":
+            return None
+        return ("(SELECT born FROM anchor)",
+                f"coalesce((SELECT died FROM anchor),"
+                f" (SELECT born FROM anchor) + {MAX_LIFESPAN})")
+    if (constraint.get("type") == "in_range"
+            and constraint.get("start_year") is not None
+            and constraint.get("end_year") is not None):
+        if lived_through and (constraint.get("event") or "alive") != "alive":
+            return None
+        return (str(int(constraint["start_year"])), str(int(constraint["end_year"])))
+    return None
+
+
 def _time_conditions(target: str, constraint: dict, ctes: list,
                      dropped: list = None) -> list:
     """Turn a time_constraint into conditions on the target's dates."""
@@ -1011,6 +1134,9 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     #whether the answer is a list of rulers, which the projection prints
     #differently - see _office_period_columns
     leaders = False
+    #a ruler's title the sentence named, as its TITLE_OFFICES entry. Its
+    #condition is built after the time filter, whose window it needs.
+    asked_title = None
 
     if filters.get("name"):
         name = filters["name"]
@@ -1023,7 +1149,11 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         occupation = str(filters["occupation"]).strip().lower()
         area = OCCUPATION_AREAS.get(occupation)
         group = OCCUPATION_GROUPS.get(occupation)
-        if area:
+        asked_title = TITLE_OFFICES.get(occupation)
+        if asked_title:
+            #the office, not the label - see TITLE_OFFICES
+            leaders = True
+        elif area:
             #"scientists" is 2,039 professions, not one label
             where.append(_occupation_area_exists(area))
             areas_applied.add(area)
@@ -1097,6 +1227,10 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     if filters.get("time_constraint"):
         where += _time_conditions(target, filters["time_constraint"], ctes, dropped)
 
+    if asked_title:
+        where.append(_title_office_exists(asked_title,
+                                          _window(filters, ctes, lived_through=True)))
+
     if len(where) <= guard_only:
         #Nothing the sentence said survived - every filter was malformed and
         #dropped, or there were none to begin with. This used to test "not
@@ -1133,21 +1267,11 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         #naming the Newton it found or the years it used - and which Newton it
         #found is exactly what went wrong once already, when the anchor was
         #ordered by attribute count and Olivia Newton-John kept winning.
-        window = None
+        window = _window(filters, ctes)
         if any(c.startswith("anchor AS") for c in ctes):
             select += ["(SELECT who FROM anchor) AS anchor",
                        "(SELECT born FROM anchor) AS anchor_born",
                        "(SELECT died FROM anchor) AS anchor_died"]
-            window = ("(SELECT born FROM anchor)",
-                      f"coalesce((SELECT died FROM anchor),"
-                      f" (SELECT born FROM anchor) + {MAX_LIFESPAN})")
-        else:
-            constraint = filters.get("time_constraint") or {}
-            if (constraint.get("type") == "in_range"
-                    and constraint.get("start_year") is not None
-                    and constraint.get("end_year") is not None):
-                window = (str(int(constraint["start_year"])),
-                          str(int(constraint["end_year"])))
         if window:
             #The window itself, so the answer can say which part of each life
             #the question was actually about. A person whose life runs past
@@ -1156,7 +1280,8 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             #Newton shared 1643-1645, two years of a forty-nine year life.
             select += [f"{window[0]} AS window_from", f"{window[1]} AS window_to"]
         if leaders and window:
-            select += _office_period_columns(*window)
+            select += (_office_period_columns(*window, asked_title[0], TITLE_OFFICE_NOT)
+                       if asked_title else _office_period_columns(*window))
             #Reigns first, in the order they began. Birth order buried the six
             #kings of France among the 35 leaders of Montaigne's lifetime -
             #lords, regents of Montferrat and Tuscany, the house of Lorraine -

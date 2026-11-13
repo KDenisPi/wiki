@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Put back the leader filter, and its country, when stage 1 drops them.
+"""Put back the leader or ruler's title, and its country, when stage 1 drops them.
 
 The composer knows what "leaders" means - a group of offices and standings,
 OCCUPATION_GROUPS in intent_to_sql.py - but only if the word reaches it.
@@ -14,16 +14,20 @@ that "Russia leaders" has a location; the model still drops them.
 
 So the words are read off the sentence here, after stage 1, and only to fill
 a field stage 1 left empty - nothing it did fill is overwritten. Only the
-composer's own leader words count, because those are the ones it turns into
-the leader group; a word it would match literally gains nothing from being
-put back.
+composer's own words count: the leader group's, and the rulers' titles it
+reads off a held office (TITLE_OFFICES - "Show me France kings when Michel de
+Montaigne was alive?" lost "kings" the same way). A word the composer would
+match literally gains nothing from being put back.
 
 Two kinds of sentence look like this one and must not be filled:
 
   - a qualified leader. "Military leaders", "religious leaders", "party
-    leaders" are a different question, and filling plain "leaders" would
-    answer it with kings. The words before the leader word are checked
-    against QUALIFIERS.
+    leaders", "drag queens", "university presidents" are a different
+    question, and filling the plain word would answer it with kings. The
+    words before the leader word are checked against QUALIFIERS.
+  - a title inside a name. "Who lived at the same time as Martin Luther
+    King?" holds "king" in the time anchor, and the composer would look for
+    kings; a word inside one of the intent's names is not read.
   - the leader of something that is not a country. "The leader of the
     Beatles" names the Beatles, and stage 1 puts them in the intent as a
     named entity. A place after the leader word that is already one of the
@@ -44,12 +48,14 @@ import json
 import re
 import sys
 
-from intent_to_sql import LEADER_OCCUPATIONS, OCCUPATION_GROUPS
+from intent_to_sql import LEADER_OCCUPATIONS, OCCUPATION_GROUPS, TITLE_OFFICES
 
-#The sentence words the composer turns into the leader group, longest first so
-#that "country leaders" wins over "leaders" and "heads of state" over nothing.
-LEADER_WORDS = sorted((word for word, group in OCCUPATION_GROUPS.items()
-                       if group is LEADER_OCCUPATIONS), key=len, reverse=True)
+#The sentence words the composer turns into the leader group or reads as a
+#ruler's title, longest first so that "country leaders" wins over "leaders"
+#and "prime ministers" over nothing.
+LEADER_WORDS = sorted({word for word, group in OCCUPATION_GROUPS.items()
+                       if group is LEADER_OCCUPATIONS} | set(TITLE_OFFICES),
+                      key=len, reverse=True)
 LEADER_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in LEADER_WORDS) + r")\b",
                        re.IGNORECASE)
 
@@ -58,7 +64,8 @@ QUALIFIERS = re.compile(
     r"\b(military|army|war|religious|spiritual|church|labou?r|trade|union|party|"
     r"opposition|rebel|guerrilla|resistance|team|band|business|corporate|"
     r"community|student|youth|tribal|civil rights|movement|cult|gang|squad|"
-    r"expedition)\s+$", re.IGNORECASE)
+    r"expedition|drag|beauty|prom|homecoming|carnival|race|university|college|"
+    r"company|club|bank|board|academy|society)\s+$", re.IGNORECASE)
 
 #The place right after the leader word: "(France)", or "of / in / from
 #[the] France", a run of capitalised words that may hold "of" inside it
@@ -118,8 +125,13 @@ def fill(intent_text: str, sentence: str) -> tuple:
 
     notes = []
     anchor, others = _mentions(filters)
+    lowered = sentence.lower()
+    inside_names = [(at, at + len(m)) for m in anchor + others
+                    for at in (i.start() for i in re.finditer(re.escape(m), lowered))]
     for match in LEADER_RE.finditer(sentence):
         if QUALIFIERS.search(sentence[:match.start()]):
+            continue
+        if any(start <= match.start() and match.end() <= end for start, end in inside_names):
             continue
         place_match = PLACE_RE.match(sentence, match.end())
         place = None
@@ -187,6 +199,16 @@ def _self_check() -> int:
         #a named target is described by the word, not filtered by it
         ("Was Napoleon a ruler of France?", intent(name="Napoleon"), (None, None)),
         ("Which wars did rulers of France fight?", intent(target="event"), (None, None)),
+        #a ruler's title, read the same way
+        ("Show me the French kings when Michel de Montaigne was alive?",
+         intent(location="France", anchor=montaigne), ("kings", "France")),
+        ("Who were the kings of Spain in the 16th century?", intent(), ("kings", "Spain")),
+        ("List the prime ministers of the United Kingdom", intent(),
+         ("prime ministers", "United Kingdom")),
+        ("Which drag queens lived in Paris?", intent(location="Paris"), (None, "Paris")),
+        ("List university presidents in France", intent(location="France"), (None, "France")),
+        ("Who lived at the same time as Martin Luther King?",
+         intent(anchor="Martin Luther King"), (None, None)),
         #not an intent
         ("rulers of France", "not json", None),
     ]
