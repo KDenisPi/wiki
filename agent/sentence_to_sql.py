@@ -71,6 +71,7 @@ from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 from answer_text import describe as describe_answer  # noqa: E402 - sibling module
 from fix_sentence import fix as fix_sentence  # noqa: E402 - sibling module
 from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
+from leader_words import fill as fill_leader_words  # noqa: E402 - sibling module
 from resolve_names import resolve as resolve_names  # noqa: E402 - sibling module
 from model_retry import (  # noqa: E402 - sibling module
     DEFAULT_RETRY_PENALTY,
@@ -467,6 +468,17 @@ def full_run(args: argparse.Namespace) -> None:
                            timeout=args.request_timeout)
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
     logger.info("stage1 intent (extracted):\n%s", intent)
+
+    #The leader words the composer turns into a group, and the country after
+    #them, when stage 1 left either field empty - leader_words has the
+    #questions it dropped them from. Before the names are resolved: it tells
+    #a country from a named entity by comparing the sentence's words with the
+    #intent's names, which still have the sentence's spelling only here.
+    intent, filled = fill_leader_words(intent, sentence)
+    for note in filled:
+        logger.info("stage1: %s", note)
+    if filled:
+        logger.info("stage1 intent (leader words filled):\n%s", intent)
 
     #Before the intent is used for anything: the names in it are the
     #sentence's spelling, and the composer matches them literally. This is

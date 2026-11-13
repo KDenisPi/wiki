@@ -188,11 +188,16 @@ OCCUPATION_AREAS = {
 #lost, because the label is never the only one a leader carries: Churchill,
 #Peter the Great, Napoleon, de Gaulle and Lincoln are all still found, by
 #"head of government", "ruler", "monarch" or their office.
+#
+#"consul" came out on 2026-11-13. It was here for Rome, and the extract uses it
+#for the diplomat: it is the only route into the group for 461 of its 467
+#people, led by Roger Casement and Saburo Kurusu, and it put a town consul
+#among the leaders of France in Montaigne's lifetime.
 LEADER_OCCUPATIONS = (
     "monarch", "sovereign", "ruler",                       # 3,119 / 1,984 / 1,486
     "head of state", "head of government", "regent",       # 24 / 21 / 345
     "emperor", "king", "queen", "tsar", "president",       # 48 / 532 / 53 / 5 / 95
-    "prime minister", "chancellor", "consul", "lord",      # 19 / 526 / 467 / 153
+    "prime minister", "chancellor", "lord",                # 19 / 526 / 153
     "prince", "sultan", "caliph", "khan",                  # 54 / 55 / 76 / 42
     "duke", "shah", "pharaoh",                             # 11 / 7 / 3
 )
@@ -242,11 +247,34 @@ LEADER_OFFICE_TITLE = (
 #Cherkassky, Osterman, Bestuzhev-Ryumin, Vorontsov and both Panins, plus
 #Jacob Bruce at the Collegium of Mining. It costs nothing to exclude: the
 #only offices it reaches are those two, thirteen people, none of them rulers.
+#
+#A consort is married to the ruler, which is the one thing that does not make
+#her one. "Queen Consort of France" starts with a ruler's title and passed,
+#and so did 260 other people through "queen consort", "empress consort",
+#"Queen mother" and "dowager" - among the leaders of France in Montaigne's
+#lifetime were Mary Tudor, Margaret of Valois, and Elisabeth of Valois as
+#Queen Consort of Spain. A consort who ruled in her own right keeps that
+#office and that standing: Irina Godunova is still found by "Tsar of All
+#Russia", Catherine de' Medici by "regent".
+#
+#The last four are titles that say nothing on their own. An office labelled
+#"president" alone, with no "of" to say of what, is the only way 11,062 people
+#reach the group, and they are presidents of academies and societies - H. G.
+#Wells, Richard Stallman, Bergson, Joule, Poincare, Laplace - and of the
+#parlements: thirteen of the fifty leaders of France in Montaigne's lifetime.
+#The heads of state are not among them, because their offices say what they
+#led: "President of the French Republic", "President of the United States".
+#"General secretary" alone is 1,220 more (Desmond Tutu, Gunnar Myrdal),
+#"chancellor" 299 (Pius X, Lord Rayleigh - universities), "first secretary" 54
+#regional party secretaries. A bare "regent" is left in: Adrian VI, Margaret
+#Tudor and Prince Shotoku ruled with nothing more on their office's label.
 LEADER_OFFICE_NOT = (
     "academy|society|association|university|college|collegium|institute|club|"
     "federation|company|committee|board|chamber|court|bank|faculty|museum|"
     "foundation|conference|synod|commission|corporation|league|school|hospital|"
-    "library|order of|union of"
+    "library|order of|union of|"
+    "consort|dowager|queen mother|"
+    "^president$|^general secretary$|^chancellor$|^first secretary$"
 )
 
 #The words a sentence uses for that group. "leader" alone matches 12,503
@@ -1129,6 +1157,14 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             select += [f"{window[0]} AS window_from", f"{window[1]} AS window_to"]
         if leaders and window:
             select += _office_period_columns(*window)
+            #Reigns first, in the order they began. Birth order buried the six
+            #kings of France among the 35 leaders of Montaigne's lifetime -
+            #lords, regents of Montferrat and Tuscany, the house of Lorraine -
+            #and cut the presidents of 20th-century France out of the first
+            #200 rows altogether, behind people born before them. Who has no
+            #dated office still follows in birth order, since 22% of ruler
+            #offices carry no dates and an undated ruler is still a ruler.
+            order = "held_from NULLS LAST, born NULLS LAST"
     else:
         #Show the date the question asked about. A work often carries several
         #dates, and the filter only requires one of them to fall in the window,
