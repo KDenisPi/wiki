@@ -176,6 +176,34 @@ Check that the new machine reaches them:
 DuckDB spills large queries to a temp directory and may use up to 25 GiB there
 by default - leave that much free on the disk with the database.
 
+## The wiki service (for MCP and the kiosk)
+
+`agent/wiki_service.py` serves the same pipeline over HTTP on `:8200`, for
+AI_agents' MCP proxy at `:8000/wiki` and its kiosk. It uses only the venv
+above - Python's own HTTP server, no new packages. The module docstring has
+the endpoints; in short:
+
+| Endpoint | Does | MCP tool |
+|---|---|---|
+| `POST /sentence {"question"}` | step 0 only | `wiki_sentence` |
+| `POST /intent {"question"}` | step 0, stage 1, the leader-word fill, names - no SQL | `wiki_intent` |
+| `POST /query <intent>` | names, then stage 2 | `wiki_query` |
+| `POST /ask {"question"}` | all of it | `wiki_ask` |
+| `GET /tools` | the four tools' names, descriptions and input schemas | |
+| `GET /health` | `{"status": "ok"}` when the database is there | |
+
+At most 50 rows come back (`row_count` is the total) and two questions run at
+once (`--max-rows`, `--concurrency`). Unlike the command line it writes no
+training log unless `--training-log` is passed.
+
+Run it as a service (needs sudo):
+
+    sudo cp wiki-server.service /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now wiki-server
+    curl -s localhost:8200/health
+    curl -s localhost:8200/ask -d '{"question": "When was Beethowen born?"}'
+
 ## Rebuilding the database (optional)
 
 Only needed for a new extract. The full parse reads the 2 TB dump
