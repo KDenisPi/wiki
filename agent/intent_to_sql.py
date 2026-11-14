@@ -255,7 +255,9 @@ LEADER_OFFICE_TITLE = (
 #lifetime were Mary Tudor, Margaret of Valois, and Elisabeth of Valois as
 #Queen Consort of Spain. A consort who ruled in her own right keeps that
 #office and that standing: Irina Godunova is still found by "Tsar of All
-#Russia", Catherine de' Medici by "regent".
+#Russia", Catherine de' Medici by "regent". _office_match adds these words to
+#the ones below unless the question asked for consorts by name - "queens of
+#France" means exactly them (TITLE_OFFICES).
 #
 #The last four are titles that say nothing on their own. An office labelled
 #"president" alone, with no "of" to say of what, is the only way 11,062 people
@@ -268,12 +270,12 @@ LEADER_OFFICE_TITLE = (
 #"chancellor" 299 (Pius X, Lord Rayleigh - universities), "first secretary" 54
 #regional party secretaries. A bare "regent" is left in: Adrian VI, Margaret
 #Tudor and Prince Shotoku ruled with nothing more on their office's label.
+CONSORT_OFFICE = "consort|dowager|queen mother"
 LEADER_OFFICE_NOT = (
     "academy|society|association|university|college|collegium|institute|club|"
     "federation|company|committee|board|chamber|court|bank|faculty|museum|"
     "foundation|conference|synod|commission|corporation|league|school|hospital|"
     "library|order of|union of|"
-    "consort|dowager|queen mother|"
     "^president$|^general secretary$|^chancellor$|^first secretary$"
 )
 
@@ -312,29 +314,38 @@ OCCUPATION_GROUPS = {
 #268 rows "French presidents of the 20th century" first came back with. A
 #throne is the other way round: 333 of 406 pharaohs hold theirs undated, so
 #an undated office still counts there.
+#
+#And the last says whether the ruler's wife is meant too. For "king", "ruler"
+#and "leader" she is not, but "queen", "empress" and "tsarina" are as often
+#the consort's title as the ruler's, and for France only the consort's: it
+#never had a reigning queen, so "France queens when Montaigne was alive"
+#found nobody until consorts counted. The office column says which was held.
+#A queen reads "Consort of England" too, which is all Anne of Cleves and
+#Catherine Parr hold.
 SEX_PROP = "P21"
 TITLE_OFFICES = {}
-for _words, _titles, _sex, _dated in (
-        (("king", "kings"), "king|monarch|sovereign", "male", False),
-        (("queen", "queens"), "queen|monarch|sovereign", "female", False),
-        (("emperor", "emperors"), "emperor|empress", None, False),
-        (("empress", "empresses"), "empress|emperor", "female", False),
-        (("tsar", "tsars", "czar", "czars"), "tsar|tsarina|tsaritsa", None, False),
-        (("tsarina", "tsarinas", "tsaritsa", "tsaritsas"), "tsarina|tsaritsa|tsar", "female", False),
-        (("sultan", "sultans"), "sultan", None, False),
-        (("shah", "shahs"), "shah", None, False),
-        (("pharaoh", "pharaohs"), "pharaoh", None, False),
-        (("caliph", "caliphs"), "caliph", None, False),
-        (("khan", "khans"), "khan", None, False),
-        (("doge", "doges"), "doge", None, False),
-        (("grand duke", "grand dukes"), "grand duke", None, False),
-        (("grand prince", "grand princes"), "grand prince", None, False),
-        (("president", "presidents"), "president", None, True),
-        (("prime minister", "prime ministers"), "prime minister", None, True),
-        (("chancellor", "chancellors"), "chancellor", None, True)):
+for _words, _titles, _sex, _dated, _consorts in (
+        (("king", "kings"), "king|monarch|sovereign", "male", False, False),
+        (("queen", "queens"), "queen|monarch|sovereign|consort", "female", False, True),
+        (("emperor", "emperors"), "emperor|empress", None, False, False),
+        (("empress", "empresses"), "empress|emperor", "female", False, True),
+        (("tsar", "tsars", "czar", "czars"), "tsar|tsarina|tsaritsa", None, False, False),
+        (("tsarina", "tsarinas", "tsaritsa", "tsaritsas"), "tsarina|tsaritsa|tsar",
+         "female", False, True),
+        (("sultan", "sultans"), "sultan", None, False, False),
+        (("shah", "shahs"), "shah", None, False, False),
+        (("pharaoh", "pharaohs"), "pharaoh", None, False, False),
+        (("caliph", "caliphs"), "caliph", None, False, False),
+        (("khan", "khans"), "khan", None, False, False),
+        (("doge", "doges"), "doge", None, False, False),
+        (("grand duke", "grand dukes"), "grand duke", None, False, False),
+        (("grand prince", "grand princes"), "grand prince", None, False, False),
+        (("president", "presidents"), "president", None, True, False),
+        (("prime minister", "prime ministers"), "prime minister", None, True, False),
+        (("chancellor", "chancellors"), "chancellor", None, True, False)):
     for _word in _words:
-        TITLE_OFFICES[_word] = (_titles, _sex, _dated)
-del _words, _titles, _sex, _dated, _word
+        TITLE_OFFICES[_word] = (_titles, _sex, _dated, _consorts)
+del _words, _titles, _sex, _dated, _consorts, _word
 
 #Offices that start with a head of state's title and belong to a body inside
 #the state - a chamber, a regional parliament, a learned society in its own
@@ -488,7 +499,8 @@ def _occupation_area_exists(area: str) -> str:
             f" AND list_contains(str_split(oa.areas, '|'), {_lit(area)}))")
 
 
-def _office_match(titles: str = LEADER_OFFICE_TITLE, also_not: str = "") -> str:
+def _office_match(titles: str = LEADER_OFFICE_TITLE, also_not: str = "",
+                  consorts: bool = False) -> str:
     """Is this office label one of these titles, and not an organisation's.
 
     The title has to start the label - "Tsar of All Russia" - so that "deputy
@@ -497,7 +509,8 @@ def _office_match(titles: str = LEADER_OFFICE_TITLE, also_not: str = "") -> str:
     but "Federal Chancellor of Germany", and the only other office it lets in
     is the Federal Chancellor of Austria.
     """
-    excluded = LEADER_OFFICE_NOT + (f"|{also_not}" if also_not else "")
+    excluded = (LEADER_OFFICE_NOT + ("" if consorts else f"|{CONSORT_OFFICE}")
+                + (f"|{also_not}" if also_not else ""))
     return (f"regexp_matches(lower({V_LABEL}), '^(federal )?({titles})( of | |$)')"
             f" AND NOT regexp_matches(lower({V_LABEL}), '({excluded})')")
 
@@ -507,7 +520,7 @@ def _leader_office_exists() -> str:
     return _attribute_exists((POSITION_PROP,), _office_match())
 
 
-def _title_office_exists(title: tuple, window: tuple = None) -> str:
+def _title_office_exists(title: tuple, window: tuple = None, place: str = None) -> str:
     """Did this person hold the office the question names, while it asked.
 
     `title` is a TITLE_OFFICES entry. The office has to fall in the window
@@ -516,23 +529,25 @@ def _title_office_exists(title: tuple, window: tuple = None) -> str:
     an office with no dates is let through on the person's lifespan, which
     the time filter has already tested, because a quarter of ruler offices
     carry none.
+
+    With `place`, the office has to name it as well - "Queen Consort of
+    France". The sex the title implies is build_sql's to add, once.
     """
-    titles, sex, dated = title
-    match = _office_match(titles, TITLE_OFFICE_NOT)
+    titles, sex, dated, consorts = title
+    match = _office_match(titles, TITLE_OFFICE_NOT, consorts)
+    if place:
+        match += f" AND {_word_match(V_LABEL, place)}"
     if dated:
         match += " AND a.start_year IS NOT NULL"
     if window:
         start, end = window
         match += (f" AND (a.start_year IS NULL OR (a.start_year <= {end}"
                   f" AND coalesce(a.end_year, a.start_year) >= {start}))")
-    condition = _attribute_exists((POSITION_PROP,), match)
-    if sex:
-        condition += f" AND {_attribute_exists((SEX_PROP,), f'{V_LABEL} = {_lit(sex)}')}"
-    return condition
+    return _attribute_exists((POSITION_PROP,), match)
 
 
 def _office_period_columns(start: str, end: str, titles: str = LEADER_OFFICE_TITLE,
-                           also_not: str = "") -> list:
+                           also_not: str = "", consorts: bool = False) -> list:
     """The office a leader held during the window the question asked about.
 
     run7 is the first extract to carry P580/P582 as qualifiers, so a P39 claim
@@ -562,7 +577,7 @@ def _office_period_columns(start: str, end: str, titles: str = LEADER_OFFICE_TIT
     #picked the 14 years over the 37.
     where = (f"""FROM attributes a JOIN value_items v ON v.qid = a."value"
              WHERE a.qid = i.qid AND a.property = {_lit(POSITION_PROP)}
-               AND {_office_match(titles, also_not)}
+               AND {_office_match(titles, also_not, consorts)}
                AND a.start_year IS NOT NULL
                AND a.start_year <= {end}
                AND coalesce(a.end_year, a.start_year) >= {start}
@@ -1175,7 +1190,7 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             where.append(_attribute_exists((OCCUPATION_PROP,),
                                            _word_match(V_LABEL, filters['occupation'])))
 
-    if filters.get("location"):
+    if filters.get("location") and not asked_title:
         where.append(_attribute_exists(PLACE_PROPS[target],
                                        _word_match(V_LABEL, filters['location'])))
 
@@ -1228,8 +1243,19 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         where += _time_conditions(target, filters["time_constraint"], ctes, dropped)
 
     if asked_title:
-        where.append(_title_office_exists(asked_title,
-                                          _window(filters, ctes, lived_through=True)))
+        window = _window(filters, ctes, lived_through=True)
+        where.append(_title_office_exists(asked_title, window))
+        if asked_title[1]:
+            where.append(_attribute_exists((SEX_PROP,), f"{V_LABEL} = {_lit(asked_title[1])}"))
+        if filters.get("location"):
+            #The country is the person's, as for any question, or the title's
+            #own: Eleanor of Austria, a citizen of Spain and Portugal, was
+            #Queen Consort of France 1530-1548, and Mary, Queen of Scots
+            #after her. Either is enough - the office alone would lose every
+            #President of the French Republic, whose label never says France.
+            place = filters["location"]
+            where.append(f"({_attribute_exists(PLACE_PROPS[target], _word_match(V_LABEL, place))}"
+                         f" OR {_title_office_exists(asked_title, window, place)})")
 
     if len(where) <= guard_only:
         #Nothing the sentence said survived - every filter was malformed and
@@ -1280,7 +1306,8 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             #Newton shared 1643-1645, two years of a forty-nine year life.
             select += [f"{window[0]} AS window_from", f"{window[1]} AS window_to"]
         if leaders and window:
-            select += (_office_period_columns(*window, asked_title[0], TITLE_OFFICE_NOT)
+            select += (_office_period_columns(*window, asked_title[0], TITLE_OFFICE_NOT,
+                                              asked_title[3])
                        if asked_title else _office_period_columns(*window))
             #Reigns first, in the order they began. Birth order buried the six
             #kings of France among the 35 leaders of Montaigne's lifetime -

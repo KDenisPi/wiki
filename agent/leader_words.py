@@ -120,10 +120,33 @@ def fill(intent_text: str, sentence: str) -> tuple:
     #a named person is the answer itself, and the leader word describes them
     if intent.get("target_type") != "person" or filters.get("name"):
         return intent_text, []
-    if filters.get("occupation") and filters.get("location"):
-        return intent_text, []
-
     notes = []
+    #"Show me the queens of France when ..." came back from stage 1 as a
+    #comparison with one entity, "queens of France" - which name resolution
+    #then read as Marie of Brabant, and the composer, finding nothing to
+    #compare, answered with the time filter alone. A compared entity that
+    #starts with a ruler's word is the group the question asks for, not a
+    #name, so it leaves the comparison and the words below are read instead.
+    compare = filters.get("compare_entities")
+    if isinstance(compare, dict) and isinstance(compare.get("entities"), list):
+        kept = [e for e in compare["entities"]
+                if not (isinstance(e, str) and LEADER_RE.match(re.sub(r"(?i)^the\s+", "", e.strip())))]
+        if len(kept) < len(compare["entities"]):
+            moved = [e for e in compare["entities"] if e not in kept]
+            if len(kept) >= 2:
+                compare["entities"] = kept
+            else:
+                filters["compare_entities"] = None
+            notes.append(f"{', '.join(map(repr, moved))} is a group, not a name to compare -"
+                         " read as occupation and location instead")
+    #a comparison between named people is about them, whatever they ruled
+    compare = filters.get("compare_entities")
+    if isinstance(compare, dict) and len(compare.get("entities") or []) >= 2:
+        return intent_text, []
+    if filters.get("occupation") and filters.get("location"):
+        return (json.dumps(intent, indent=2, ensure_ascii=False), notes) if notes \
+            else (intent_text, [])
+
     anchor, others = _mentions(filters)
     lowered = sentence.lower()
     inside_names = [(at, at + len(m)) for m in anchor + others
@@ -160,7 +183,7 @@ def fill(intent_text: str, sentence: str) -> tuple:
 def _self_check() -> int:
     """Sentences and what each must fill; no model and no database needed."""
     def intent(occupation=None, location=None, name=None, anchor=None, related=None,
-               target="person"):
+               target="person", compare=None):
         return json.dumps({"target_type": target, "answer_field": None, "filters": {
             "name": name, "occupation": occupation, "subject": None, "location": location,
             "domain": None,
@@ -168,7 +191,8 @@ def _self_check() -> int:
                                  "entity_mention": anchor} if anchor else None),
             "related_entity": ({"relation": "participates_in", "entity_mention": related}
                                if related else None),
-            "compare_entities": None}})
+            "compare_entities": ({"entities": compare, "aspect": "location", "relation": "same"}
+                                 if compare else None)}})
 
     montaigne = "Michel de Montaigne"
     cases = [
@@ -209,6 +233,12 @@ def _self_check() -> int:
         ("List university presidents in France", intent(location="France"), (None, "France")),
         ("Who lived at the same time as Martin Luther King?",
          intent(anchor="Martin Luther King"), (None, None)),
+        #a ruler group stage 1 mistook for a name to compare
+        ("Show me the queens of France when Michel de Montaigne was alive?",
+         intent(anchor=montaigne, compare=["queens of France"]), ("queens", "France")),
+        #a real comparison between named rulers is left alone
+        ("Did the kings Louis XIV and Charles II live at the same time?",
+         intent(compare=["Louis XIV", "Charles II"]), None),
         #not an intent
         ("rulers of France", "not json", None),
     ]
@@ -222,6 +252,9 @@ def _self_check() -> int:
             filters = json.loads(text)["filters"]
             got = (filters["occupation"], filters["location"])
             ok = got == want
+            compared = filters.get("compare_entities") or {}
+            if any(LEADER_RE.match(e) for e in compared.get("entities") or []):
+                ok, got = False, (got, "still compared:", compared["entities"])
         print(f"{'ok  ' if ok else 'FAIL'} {sentence!r}: {got}" + (f"  [{'; '.join(notes)}]" if notes else ""))
         failures += not ok
     print("\nall checks passed" if not failures else f"\n{failures} check(s) failed")
