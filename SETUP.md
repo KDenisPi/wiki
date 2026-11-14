@@ -143,14 +143,16 @@ llama-server names a model by the `.gguf` path it was started with, so
 `--model2` is a path on the **server**, not on this machine. Under Ollama the
 untuned one is `Qwen2.5-Coder-7B-Instruct-Q4_K_M:latest`.
 
-Ollama runs as a systemd service. The `:1235` llama-server does not - after a
-reboot, start it again from the llama.cpp checkout:
+Ollama runs as a systemd service. The `:1235` llama-server is started by
+AI_agents' `start_all.sh` (and stopped by `stop_all.sh`), with the other
+model servers; its pid and log are `logs/llama-sql.pid` and
+`logs/llama-sql.log` in the llama.cpp checkout. By hand:
 
     cd ~/projects/llama.cpp
     setsid ./build/bin/llama-server \
         -m /home/denis/projects/models/qwen2.5-coder-7b-instruct.Q4_K_M.gguf \
         -ngl 99 --host 0.0.0.0 --port 1235 -fa on \
-        --cache-type-k q8_0 --cache-type-v q8_0 > logs/llama.log 2>&1 &
+        --cache-type-k q8_0 --cache-type-v q8_0 > logs/llama-sql.log 2>&1 &
 
 Check that the new machine reaches them:
 
