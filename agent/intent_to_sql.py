@@ -625,7 +625,8 @@ def _leader_office_in_window(window: tuple) -> str:
 
 
 def _office_period_columns(start: str, end: str, titles: str = LEADER_OFFICE_TITLE,
-                           also_not: str = "", consorts: bool = False) -> list:
+                           also_not: str = "", consorts: bool = False,
+                           place: str = None) -> list:
     """The office a leader held during the window the question asked about.
 
     run7 is the first extract to carry P580/P582 as qualifiers, so a P39 claim
@@ -653,6 +654,13 @@ def _office_period_columns(start: str, end: str, titles: str = LEADER_OFFICE_TIT
     #Terrible was Sovereign of all Russia 1533-1547 and Tsar 1547-1584, and a
     #question about the 16th century that answers "Sovereign, 1533-1547" has
     #picked the 14 years over the 37.
+    #
+    #Two offices held for the same years were a coin toss: George IV was
+    #monarch of the United Kingdom and King of Hanover 1820-1830, and the
+    #same question printed either. The one naming the country the question
+    #asked about wins, then the label, so a question answers the same twice.
+    prefer_place = (f"CASE WHEN {_place_match(V_LABEL, place, (start, end))} THEN 0 ELSE 1 END, "
+                    if place else "")
     where = (f"""FROM attributes a JOIN value_items v ON v.qid = a."value"
              WHERE a.qid = i.qid AND a.property = {_lit(POSITION_PROP)}
                AND {_office_match(titles, also_not, consorts)}
@@ -661,7 +669,7 @@ def _office_period_columns(start: str, end: str, titles: str = LEADER_OFFICE_TIT
                AND coalesce(a.end_year, a.start_year) >= {start}
              ORDER BY least(coalesce(a.end_year, a.start_year), {end})
                       - greatest(a.start_year, {start}) DESC,
-                      a.start_year
+                      {prefer_place}a.start_year, {V_LABEL}
              LIMIT 1""")
     return [f"(SELECT {V_LABEL} {where}) AS office",
             f"(SELECT a.start_year {where}) AS held_from",
@@ -1426,9 +1434,10 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             #Newton shared 1643-1645, two years of a forty-nine year life.
             select += [f"{window[0]} AS window_from", f"{window[1]} AS window_to"]
         if leaders and window:
+            place = filters.get("location")
             select += (_office_period_columns(*window, asked_title[0], TITLE_OFFICE_NOT,
-                                              asked_title[3])
-                       if asked_title else _office_period_columns(*window))
+                                              asked_title[3], place=place)
+                       if asked_title else _office_period_columns(*window, place=place))
             #Reigns first, in the order they began. Birth order buried the six
             #kings of France among the 35 leaders of Montaigne's lifetime -
             #lords, regents of Montferrat and Tuscany, the house of Lorraine -

@@ -1,4 +1,5 @@
-"""One sentence of English for a result set, instead of a tuple.
+"""English for a result set, instead of a tuple - one sentence, or for a
+list of several, a line saying how many and one line per item.
 
 The composer emits a small, fixed set of column shapes, and each one already
 says what the question was - a comparison ends in an "answer" column, a person
@@ -227,7 +228,14 @@ def _listing(columns, rows, limit=None) -> str:
             detail = None
         shown.append(f"{name} ({detail})" if detail else str(name))
 
-    listed = f"{total} {noun}: {_join(shown)}."
+    #One per line once there are two: read on the kiosk's strip or in a
+    #Telegram message, eight kings of France in one comma-joined sentence were
+    #a paragraph to search through, and two hundred names a wall. One stays a
+    #sentence.
+    if count == 1:
+        listed = f"{total} {noun}: {shown[0]}."
+    else:
+        listed = f"{total} {noun}:\n" + "\n".join(f"- {item}" for item in shown)
 
     #Name the life the window was taken from. "25 people" asserts a relation
     #to Newton without saying which Newton or from when to when, and that is
@@ -247,7 +255,7 @@ def _listing(columns, rows, limit=None) -> str:
 
 
 def describe(columns, rows, limit=None):
-    """One sentence for a result set, or None if the shape is unrecognised.
+    """The answer for a result set, or None if the shape is unrecognised.
 
     None rather than a guess: the caller still logs the rows, and a wrong
     sentence about them would be worse than no sentence at all.
@@ -324,8 +332,8 @@ def _self_check() -> int:
         (["work", "year", "sitelinks"],
          [("Symphony No. 1", 1799, 40), ("Symphony No. 2", 1801, 38),
           ("Symphony No. 3", 1803, 55), ("Symphony No. 4", 1806, 33)],
-         "4 works: Symphony No. 1 (1799), Symphony No. 2 (1801),"
-         " Symphony No. 3 (1803) and Symphony No. 4 (1806)."),
+         "4 works:\n- Symphony No. 1 (1799)\n- Symphony No. 2 (1801)"
+         "\n- Symphony No. 3 (1803)\n- Symphony No. 4 (1806)"),
         (["person", "born", "died", "sitelinks"],
          [("Hermann Zoestius", 1420, 1480, 3)],
          "1 person: Hermann Zoestius (1420-1480)."),
@@ -355,8 +363,8 @@ def _self_check() -> int:
           ("Elizabeth I of Russia", 1709, 1761, "Isaac Newton", 1643, 1727,
            None, None, None, 150)],
          "Against Isaac Newton (1643-1727) - 2 people:"
-         " Peter the Great (1672-1725, Tsar of All Russia 1682-1721)"
-         " and Elizabeth I of Russia (1709-1761)."),
+         "\n- Peter the Great (1672-1725, Tsar of All Russia 1682-1721)"
+         "\n- Elizabeth I of Russia (1709-1761)"),
         #the part of a life the question was about, when the window does not
         #cover all of it - Michael I was in the answer for two years of a
         #forty-nine year life, Leibniz for the whole of his
@@ -365,8 +373,8 @@ def _self_check() -> int:
          [("Michael I of Russia", 1596, 1645, "Isaac Newton", 1643, 1727, 1643, 1727, 74),
           ("Gottfried Wilhelm Leibniz", 1646, 1716, "Isaac Newton", 1643, 1727, 1643, 1727, 190)],
          "Against Isaac Newton (1643-1727) - 2 people:"
-         " Michael I of Russia (1596-1645, overlap 1643-1645)"
-         " and Gottfried Wilhelm Leibniz (1646-1716)."),
+         "\n- Michael I of Russia (1596-1645, overlap 1643-1645)"
+         "\n- Gottfried Wilhelm Leibniz (1646-1716)"),
         #a window of plain years names itself, or the clipped interval beside
         #each life has nothing to be read against
         (["person", "born", "died", "window_from", "window_to", "sitelinks"],
@@ -394,9 +402,9 @@ def _self_check() -> int:
     for columns, rows, expected in cases:
         got = describe(columns, rows)
         if got == expected:
-            print(f"ok   {got}")
+            print(f"ok   {got!r}")
         else:
-            print(f"FAIL expected: {expected}\n     got:      {got}")
+            print(f"FAIL expected: {expected!r}\n     got:      {got!r}")
             failures += 1
 
     #the row-limit qualifier, which needs the limit the caller used
