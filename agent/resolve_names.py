@@ -51,6 +51,7 @@ import logging
 #copy of the matching rules here would drift, and every drift is either a
 #rewrite of a name that needed none or a name left misspelled.
 from intent_to_sql import I_LABEL, _fuzzy_match, _title_match, _word_match
+from wiki_db import connect_db
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +170,8 @@ def resolve(intent_text: str, db_path: str) -> tuple:
         return intent_text, [], []
 
     try:
-        import duckdb
-        con = duckdb.connect(db_path, read_only=True)
+        #the same connection the query itself gets - see wiki_db
+        con = connect_db(db_path)
     except Exception as e:                      # noqa: BLE001 - see docstring
         logger.warning("names: not resolved (%s)", e)
         return intent_text, [], []

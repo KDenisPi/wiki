@@ -409,6 +409,12 @@ TIME_RELATIONS = ("overlap", "before", "after")
 TARGET_TYPES = ("person", "work", "event")
 
 
+#How the composer says an intent asks for nothing in particular. A model
+#handed the same intent answers it with every row of the target type -
+#sentence_to_sql reads this to stop that fallback (see stage2_once).
+NOTHING_TO_FILTER = "nothing in the sentence survived as a filter"
+
+
 class Unsupported(Exception):
     """The intent has a shape the composer does not cover."""
 
@@ -1317,7 +1323,7 @@ def build_sql(intent: dict, limit: int = 200) -> str:
         #lived on the same time with Isaac Newton?" was answered with Mtoto,
         #76000 BC. Listing the whole table is not a worse answer than refusing,
         #it is a confident one, which is worse.
-        raise Unsupported("nothing in the sentence survived as a filter: "
+        raise Unsupported(f"{NOTHING_TO_FILTER}: "
                           + ("; ".join(dropped) if dropped else "no filters given"))
 
     label = 'coalesce(i."label", i.label_ru)'

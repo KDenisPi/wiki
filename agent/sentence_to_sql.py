@@ -70,9 +70,11 @@ from OllamaClient import OllamaClient  # noqa: E402 - after sys.path fixup
 
 from answer_text import describe as describe_answer  # noqa: E402 - sibling module
 from fix_sentence import fix as fix_sentence  # noqa: E402 - sibling module
-from intent_to_sql import Unsupported, build_sql  # noqa: E402 - sibling module
+from intent_to_sql import NOTHING_TO_FILTER, Unsupported, build_sql  # noqa: E402 - sibling module
 from leader_words import fill as fill_leader_words  # noqa: E402 - sibling module
 from resolve_names import resolve as resolve_names  # noqa: E402 - sibling module
+#imported for compare_models.py and eval_stage1.py too, which take it from here
+from wiki_db import connect_db  # noqa: E402,F401 - sibling module
 from model_retry import (  # noqa: E402 - sibling module
     DEFAULT_RETRY_PENALTY,
     was_cut_off,
@@ -208,25 +210,6 @@ def run_stage(client: OllamaClient, stage_name: str, prompt: str) -> str:
     reply = client.chat_once(prompt)
     logger.info("%s reply:\n%s", stage_name, reply)
     return reply
-
-
-def connect_db(db_path: str):
-    """Open the database for SQL the model may have written.
-
-    Read-only because this only ever SELECTs, and a read-write handle takes an
-    exclusive lock on the file - one pipeline run would otherwise fail the
-    moment a DuckDB CLI, compare_models.py or eval_stage1.py had the same
-    database open, and block them in turn. No file access, because read_only
-    does not stop read_csv('/etc/passwd') or COPY ... TO a file.
-
-    Lambdas are DuckDB's default `lambda w: ...` form only. The stage 2 model
-    served since 2026-11-13 was trained on it; the arrow form (w -> ...) the
-    one before wrote is off by default in 2.0 and gone in 2.1, and is no
-    longer switched back on here.
-    """
-    import duckdb
-    return duckdb.connect(db_path, read_only=True,
-                          config={"enable_external_access": False})
 
 
 def run_sql(db_path: str, sql: str, timeout: float) -> dict:
@@ -422,48 +405,57 @@ def list_models(url: str, in_use: dict) -> None:
     print("\nPass one of these names to --model-grammar, --model1 or --model2.")
 
 
-def full_run(args: argparse.Namespace) -> None:
-    """Run the full sentence -> intent -> SQL pipeline once for args.sentence."""
-    context1 = Path(args.context1).read_text()
-    context2 = Path(args.context2).read_text()
-    schema = Path(args.schema).read_text()
-    sqlexamples = Path(args.sqlexamples).read_text()
+def _model_options(args: argparse.Namespace) -> dict:
+    """The sampling options every model call starts from.
 
-    #max_tokens is not optional for the tuned model. Uncapped it does not
-    #always stop: on some prompts it starts a plausible query and then
-    #enumerates 'P44', 'P45', 'P46' until the context is full, which reads
-    #as a hung server rather than as a model that never finished.
-    options = {"temperature": args.temperature, "seed": args.seed,
-               "max_tokens": args.max_tokens}
+    max_tokens is not optional for the tuned model. Uncapped it does not
+    always stop: on some prompts it starts a plausible query and then
+    enumerates 'P44', 'P45', 'P46' until the context is full, which reads as
+    a hung server rather than as a model that never finished."""
+    return {"temperature": args.temperature, "seed": args.seed,
+            "max_tokens": args.max_tokens}
+
+
+def step0(args: argparse.Namespace, sentence: str) -> dict:
+    """Step 0: the question's spelling and grammar, corrected.
+
+    Corrected before any of the three stages reads it, and taken as the model
+    returns it. Nothing here checks the correction - fix_sentence's docstring
+    has what that costs and why it is the right shape for this step. A
+    correction is never required, so a model that is down or says nothing
+    leaves the question as typed and the run goes on. A small token cap: the
+    reply is one sentence, and a model given room to explain its edits will.
+
+    Returns the question as typed, the question the stages after this one
+    read, and fix_sentence's note on what it did or why it did not."""
+    question_used, note = sentence, None
+    if args.fix_grammar:
+        context0 = Path(args.context0).read_text()
+        client0 = OllamaClient(args.url, args.model_grammar,
+                               timeout=args.request_timeout,
+                               options={**_model_options(args), "max_tokens": 256})
+        question_used, note = fix_sentence(
+            sentence,
+            lambda text: run_stage(client0, "stage0", _fill(context0, sentence=text)))
+        if note:
+            logger.info("stage0: %s", note)
+        if question_used != sentence:
+            logger.info("stage0 question: %s", question_used)
+    return {"question": sentence, "question_used": question_used, "step0_note": note}
+
+
+def stage1(args: argparse.Namespace, sentence: str) -> dict:
+    """Stage 1: the sentence as an intent, with the leader words put back.
+
+    Returns the intent as JSON text - the form every later step reads - and
+    the notes on what was filled in after the model answered."""
     #Stage 1 gets its own, far larger cap. A reasoning model spends the budget
     #thinking before it writes anything, and those tokens count: qwen3.6 on
     #this prompt produced 3904 characters of reasoning and an EMPTY answer at
     #1024, and a correct intent at 4096. An empty stage-1 reply is worse than a
     #slow one - it looks like a model that cannot read the sentence.
-    options1 = {**options, "max_tokens": args.max_tokens1}
-
-    #Step 0: the question's spelling and grammar, corrected before any of the
-    #three stages reads it, and taken as the model returns it. Nothing here
-    #checks the correction - fix_sentence's docstring has what that costs and
-    #why it is the right shape for this step. A correction is never required,
-    #so a model that is down or says nothing leaves the question as typed and
-    #the run goes on. A small token cap: the reply is one sentence, and a
-    #model given room to explain its edits will.
-    sentence = args.sentence
-    if args.fix_grammar:
-        context0 = Path(args.context0).read_text()
-        client0 = OllamaClient(args.url, args.model_grammar,
-                               timeout=args.request_timeout,
-                               options={**options, "max_tokens": 256})
-        sentence, note = fix_sentence(
-            sentence,
-            lambda text: run_stage(client0, "stage0", _fill(context0, sentence=text)))
-        if note:
-            logger.info("stage0: %s", note)
-        if sentence != args.sentence:
-            logger.info("stage0 question: %s", sentence)
-
-    prompt1 = _fill(context1, sentence=sentence)
+    options1 = {**_model_options(args), "max_tokens": args.max_tokens1}
+    prompt1 = _fill(Path(args.context1).read_text(), sentence=sentence)
     client1 = OllamaClient(args.url, args.model1, options=options1,
                            timeout=args.request_timeout)
     intent = _extract_intent_json(run_stage(client1, "stage1", prompt1))
@@ -479,23 +471,53 @@ def full_run(args: argparse.Namespace) -> None:
         logger.info("stage1: %s", note)
     if filled:
         logger.info("stage1 intent (leader words filled):\n%s", intent)
+    return {"intent": intent, "notes": list(filled)}
 
-    #Before the intent is used for anything: the names in it are the
-    #sentence's spelling, and the composer matches them literally. This is
-    #ahead of prompt2 on purpose - the prompt, the composed SQL and the
-    #training record all have to be built from the same intent, and an intent
-    #resolved after the prompt was filled would make the record disagree with
-    #what ran. resolve_names has the cost measurements.
+
+def resolve(args: argparse.Namespace, intent: str) -> dict:
+    """The names in an intent, rewritten to the extract's spelling.
+
+    Before the intent is used for anything: the names in it are the
+    sentence's spelling, and the composer matches them literally. This is
+    ahead of the stage 2 prompt on purpose - the prompt, the composed SQL and
+    the training record all have to be built from the same intent, and an
+    intent resolved after the prompt was filled would make the record
+    disagree with what ran. resolve_names has the cost measurements.
+
+    `unplaced` are the names found under no spelling at all; stage2 needs
+    them to say so instead of claiming the extract holds no answer."""
     intent, notes, unplaced = resolve_names(intent, args.db)
     for note in notes:
         logger.info("names: %s", note)
     if notes:
         logger.info("stage1 intent (names resolved):\n%s", intent)
+    return {"intent": intent, "notes": list(notes), "unplaced": list(unplaced)}
 
-    prompt2 = _fill(context2, answer=intent, schema=schema, examples=sqlexamples)
-    stage2_once(args, intent, prompt2,
-                _lazy_client(args.url2, args.model2, options, args.request_timeout),
-                unplaced=unplaced)
+
+def stage2(args: argparse.Namespace, intent: str, unplaced: tuple = ()) -> dict:
+    """Stage 2 for one resolved intent: SQL, rows and the answer sentence.
+
+    stage2_once has what --sql selects and what comes back."""
+    prompt2 = _fill(Path(args.context2).read_text(), answer=intent,
+                    schema=Path(args.schema).read_text(),
+                    examples=Path(args.sqlexamples).read_text())
+    return stage2_once(args, intent, prompt2,
+                       _lazy_client(args.url2, args.model2, _model_options(args),
+                                    args.request_timeout),
+                       unplaced=unplaced)
+
+
+def full_run(args: argparse.Namespace) -> dict:
+    """Run the full sentence -> intent -> SQL pipeline once for args.sentence.
+
+    Everything every step returned, in one dict - the shape wiki_service.py
+    answers /ask with. Run from the command line, the log is the output."""
+    result = step0(args, args.sentence)
+    read = stage1(args, result["question_used"])
+    placed = resolve(args, read["intent"])
+    answered = stage2(args, placed["intent"], unplaced=placed["unplaced"])
+    return {**result, "intent": placed["intent"], "notes": read["notes"] + placed["notes"],
+            "unplaced": placed["unplaced"], **answered}
 
 
 def _ask_stage2(get_client, prompt: str, frequency_penalty: float) -> dict:
@@ -532,7 +554,7 @@ def _ask_stage2(get_client, prompt: str, frequency_penalty: float) -> dict:
 
 
 def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
-                label: str = "", unplaced: tuple = ()) -> None:
+                label: str = "", unplaced: tuple = ()) -> dict:
     """Turn one intent into SQL, run it, and record the training example.
 
     What --sql selects:
@@ -562,7 +584,30 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     resolves: step2_train replays curated intents, whose names are already the
     extract's, and a DB-dependent rewrite of a training input is a worse
     trade there than the 0.3s it would save.
+
+    Returns what happened, for a caller that is not reading the log:
+        sql, sql_source   the query that ran and where it came from
+                          (composer/model), or None when nothing ran
+        status, error     run_sql's outcome - success/failed/timeout/
+                          unavailable - or "declined" (a comparison the
+                          composer could not build), "no_filter" (an intent
+                          that names nothing to filter on) or "no_intent"
+                          (stage 1 produced nothing to build from)
+        columns, rows, row_count   what the query returned
+        answer            the one-line English answer, when there are rows
+                          or a claim to make about having none
+
+    A training record is written only when the model wrote SQL and
+    args.training_log names a file.
     """
+    def outcome(sql=None, source=None, db_result=None, answer=None, status=None, error=None):
+        db_result = db_result or {}
+        return {"sql": sql, "sql_source": source,
+                "status": status or db_result.get("status"),
+                "error": error or db_result.get("error"),
+                "columns": db_result.get("columns"), "rows": db_result.get("rows"),
+                "row_count": db_result.get("row_count"), "answer": answer}
+
     gold, reason = (None, "not requested")
     if args.sql in ("composer", "both"):
         gold, reason = compose_sql(intent, args.limit)
@@ -572,13 +617,24 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
             #purpose, and both exist to see what the model does with a prompt.
             logger.warning("%scomposer declined a comparison, and the model is not "
                            "asked for these: %s", label, reason)
-            return
+            return outcome(status="declined", error=reason)
+        if gold is None and args.sql == "composer" and NOTHING_TO_FILTER in reason:
+            #Nor for an intent that asks for nothing in particular. The
+            #composer refuses it because the honest answer is every row of
+            #the target type, and the model, handed the same intent, writes
+            #exactly that query: an intent of {"target_type": "person",
+            #"filters": {}} came back as 200 people from Mtoto, 76000 BC,
+            #onwards - a confident answer to a question nobody asked. Stage 1
+            #rarely sends one; a caller of wiki_service's /query can.
+            logger.error("%sthe intent has nothing to filter on, so stage 2 is not "
+                         "asked: %s", label, reason)
+            return outcome(status="no_filter", error=reason)
         if gold is None and _parsed_intent(intent) is None:
             #not a fallback case: there is no intent to hand on. See
             #_parsed_intent for what the model does when asked anyway.
             logger.error("%sstage 1 produced no intent, so stage 2 is not asked: %s",
                          label, reason)
-            return
+            return outcome(status="no_intent", error=reason)
         if gold is None:
             logger.info("%scomposer declined, using the model: %s", label, reason)
 
@@ -603,6 +659,7 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
     #the rows are logged above as tuples, which is what a query returns and not
     #what was asked. One line of English beside them costs nothing and is the
     #only part of this output a person reads first.
+    answer = None
     if db_result["status"] == "success":
         answer = describe_answer(db_result["columns"], db_result["rows"], args.limit)
         if unplaced and not db_result["rows"]:
@@ -615,12 +672,13 @@ def stage2_once(args: argparse.Namespace, intent: str, prompt2: str, get_client,
         if answer:
             logger.info("%sanswer: %s", label, answer)
 
-    if completion is not None:
+    if completion is not None and args.training_log:
         #only the model's own SQL belongs in the training log as a completion
         model_sql = _strip_sql_fence(completion)
         model_result = db_result if source == "model" else run_sql(args.db, model_sql, args.sql_timeout)
         log_training_example(args.training_log, args.model2, prompt2, completion,
                              model_sql, model_result, gold_sql=gold, sql_source=source)
+    return outcome(sql, source, db_result, answer)
 
 
 def _split_output_paths(training_log: str) -> tuple:
@@ -731,7 +789,9 @@ def step2_train(args: argparse.Namespace) -> None:
     write_training_splits(args)
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """The command line's options, and with them every default the pipeline
+    runs with - wiki_service.py builds its settings from the same parser."""
     parser = argparse.ArgumentParser(
         description="Sentence -> intent -> SQL, two-stage Ollama pipeline, run against local DuckDB"
     )
@@ -877,7 +937,11 @@ def main() -> None:
         "A full folder is one model call per file, so this is how to cut a run "
         "short once the first few show something is wrong",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 

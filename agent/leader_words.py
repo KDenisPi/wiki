@@ -127,16 +127,24 @@ def fill(intent_text: str, sentence: str) -> tuple:
     #compare, answered with the time filter alone. A compared entity that
     #starts with a ruler's word is the group the question asks for, not a
     #name, so it leaves the comparison and the words below are read instead.
+    #
+    #Nor is a "comparison" of one entity, whatever it holds: asked "Show me
+    #Russian tsars when Isaac Newton was alive?", stage 1 once made it
+    #["Russian tsars"], which no ruler's word starts, and the composer, with
+    #nothing to compare, answered with 200+ people alive with Newton. With a
+    #ruler's word in the sentence it goes too, so the word below is read.
     compare = filters.get("compare_entities")
     if isinstance(compare, dict) and isinstance(compare.get("entities"), list):
-        kept = [e for e in compare["entities"]
+        entities = compare["entities"]
+        kept = [e for e in entities
                 if not (isinstance(e, str) and LEADER_RE.match(re.sub(r"(?i)^the\s+", "", e.strip())))]
-        if len(kept) < len(compare["entities"]):
-            moved = [e for e in compare["entities"] if e not in kept]
-            if len(kept) >= 2:
-                compare["entities"] = kept
-            else:
-                filters["compare_entities"] = None
+        moved = [e for e in entities if e not in kept]
+        if len(kept) < 2 and (moved or LEADER_RE.search(sentence)):
+            filters["compare_entities"] = None
+            notes.append(f"{', '.join(map(repr, entities))} is a group, not names to compare -"
+                         " read as occupation and location instead")
+        elif moved:
+            compare["entities"] = kept
             notes.append(f"{', '.join(map(repr, moved))} is a group, not a name to compare -"
                          " read as occupation and location instead")
     #a comparison between named people is about them, whatever they ruled
@@ -236,6 +244,8 @@ def _self_check() -> int:
         #a ruler group stage 1 mistook for a name to compare
         ("Show me the queens of France when Michel de Montaigne was alive?",
          intent(anchor=montaigne, compare=["queens of France"]), ("queens", "France")),
+        ("Show me Russian tsars when Isaac Newton was alive?",
+         intent(anchor="Isaac Newton", compare=["Russian tsars"]), ("tsars", None)),
         #a real comparison between named rulers is left alone
         ("Did the kings Louis XIV and Charles II live at the same time?",
          intent(compare=["Louis XIV", "Charles II"]), None),
