@@ -1,0 +1,9 @@
+# Packages the wiki question service (agent/wiki_service.py) needs in its
+# container - the same two as the host venv (SETUP.md, "Python").
+#
+# duckdb is pinned: a database file created by one major version is not
+# readable by an older one, and 2.1 drops the arrow lambda this repo has just
+# moved off (SETUP.md, "DuckDB version"). Move it only with the host venv.
+duckdb==2.0.0
+# OllamaClient (imported from ../AI_agents) uses it for every model call
+requests

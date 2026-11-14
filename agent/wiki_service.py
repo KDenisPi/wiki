@@ -39,7 +39,9 @@ At most --max-rows rows go back (row_count is the total), and at most
 DuckDB query that can keep a core busy for seconds, and the rest wait their
 turn for up to --queue-timeout seconds.
 
-Run (the pipeline's own options pass through - see sentence_to_sql.py):
+In service it runs in Docker as wiki-server (docker/Dockerfile; SETUP.md has
+the run command, and AI_agents' start_all.sh starts it). By hand (the
+pipeline's own options pass through - see sentence_to_sql.py):
 
     /home/denis/projects/venv-duckdb2/bin/python agent/wiki_service.py
     /home/denis/projects/venv-duckdb2/bin/python agent/wiki_service.py --port 8200 --db <path>

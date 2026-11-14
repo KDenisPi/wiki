@@ -179,9 +179,9 @@ by default - leave that much free on the disk with the database.
 ## The wiki service (for MCP and the kiosk)
 
 `agent/wiki_service.py` serves the same pipeline over HTTP on `:8200`, for
-AI_agents' MCP proxy at `:8000/wiki` and its kiosk. It uses only the venv
-above - Python's own HTTP server, no new packages. The module docstring has
-the endpoints; in short:
+AI_agents' MCP proxy at `:8000/wiki` and its kiosk. It needs only the two
+packages above - Python's own HTTP server, nothing new. The module docstring
+has the endpoints; in short:
 
 | Endpoint | Does | MCP tool |
 |---|---|---|
@@ -196,13 +196,35 @@ At most 50 rows come back (`row_count` is the total) and two questions run at
 once (`--max-rows`, `--concurrency`). Unlike the command line it writes no
 training log unless `--training-log` is passed.
 
-Run it as a service (needs sudo):
+It runs in Docker as `wiki-server`, like the rest of the AI_agents system.
+The image holds Python and the two packages only; the code, the AI_agents
+repo it imports `OllamaClient` from, and the database are bind-mounted, so a
+code change needs a restart rather than a rebuild. Build it once, from this
+repo:
 
-    sudo cp wiki-server.service /etc/systemd/system/
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now wiki-server
+    docker build -f docker/Dockerfile -t wiki-server:latest .
+
+AI_agents' `start_all.sh` creates the container (before `mcp-server` and
+`ai-server`, which call it) and `stop_all.sh` stops it. By hand:
+
+    docker run -d --name wiki-server -u 1000:1000 -p 8200:8200 \
+        --log-opt max-size=20m --log-opt max-file=3 \
+        -v /home/denis/projects/wiki:/projects/wiki \
+        -v /home/denis/projects/AI_agents:/projects/AI_agents:ro \
+        -v /home/denis/projects/wiki_data:/data:ro \
+        wiki-server:latest python -u agent/wiki_service.py --db /data/run7/wiki.duckdb
     curl -s localhost:8200/health
     curl -s localhost:8200/ask -d '{"question": "When was Beethowen born?"}'
+    docker restart wiki-server        # after changing code under agent/
+    docker logs -f wiki-server
+
+The two repos are mounted side by side because `agent/*.py` looks for
+AI_agents at `../AI_agents`. The database is read-only: the service only
+reads it, and on run7 nothing it runs needs DuckDB's spill directory - the
+composer self-check passes inside the container
+(`docker exec wiki-server python agent/intent_to_sql.py --db /data/run7/wiki.duckdb`).
+Ollama and the `:1235` llama-server are reached at `192.168.1.57`, the
+host's LAN address, as from the other containers.
 
 ## Rebuilding the database (optional)
 

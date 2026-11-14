@@ -1,0 +1,4 @@
+# The image installs packages only - the code and the database are
+# bind-mounted at run time (docker/Dockerfile) - so nothing else is sent.
+*
+!docker/requirements.txt
