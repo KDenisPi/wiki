@@ -546,6 +546,27 @@ def _title_office_exists(title: tuple, window: tuple = None, place: str = None) 
     return _attribute_exists((POSITION_PROP,), match)
 
 
+def _leader_office_in_window(window: tuple) -> str:
+    """Not a leader of this window if every dated office says otherwise.
+
+    The leader group takes people by standing as well as by office, so a
+    window that only tests the lifespan lets in everyone filed "monarch" who
+    was alive in it. Once "alive" meant alive at any point rather than born or
+    died inside, "the leader in Russia between 1721 and 1727" was 13 people:
+    the three emperors, then Anna I and Elizabeth I, who reigned from 1730 and
+    1741, and the nobility of Courland and Brandenburg. Someone whose ruler's
+    offices are dated, and all dated outside the window, did not lead in it.
+    Someone with no dated office keeps the benefit of the doubt, as before -
+    a quarter of ruler offices carry no dates, and many leaders hold none.
+    """
+    start, end = window
+    dated = f"{_office_match()} AND a.start_year IS NOT NULL"
+    inside = (f"{dated} AND a.start_year <= {end}"
+              f" AND coalesce(a.end_year, a.start_year) >= {start}")
+    return (f"(NOT {_attribute_exists((POSITION_PROP,), dated)}"
+            f" OR {_attribute_exists((POSITION_PROP,), inside)})")
+
+
 def _office_period_columns(start: str, end: str, titles: str = LEADER_OFFICE_TITLE,
                            also_not: str = "", consorts: bool = False) -> list:
     """The office a leader held during the window the question asked about.
@@ -947,15 +968,38 @@ def _time_conditions(target: str, constraint: dict, ctes: list,
             elif event == "died":
                 properties = [DEATH]
             elif event == "alive":
-                #either date inside the window, which also keeps people whose
-                #other date is unknown
-                properties = [BIRTH, DEATH]
+                properties = None
             else:
                 raise Unsupported(f"in_range event {event!r}")
-            listed = ", ".join(_lit(p) for p in properties)
-            window = (f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
-                      f" AND e.property IN ({listed})"
-                      f" AND e.year BETWEEN {int(start)} AND {int(end)})")
+            born, died = _year_expr(BIRTH), _year_expr(DEATH)
+            if properties:
+                listed = ", ".join(_lit(p) for p in properties)
+                window = (f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
+                          f" AND e.property IN ({listed})"
+                          f" AND e.year BETWEEN {int(start)} AND {int(end)})")
+            else:
+                #Alive at some point in the window, the way the anchor branch
+                #reads "alive at the same time as X". It used to be "born or
+                #died inside it", which drops everyone who lived through it:
+                #"Who was the leader in Russia between 1721 and 1727?" lost
+                #Peter II (1715-1730), emperor from 1727, and a single year
+                #keeps almost nobody. A life with no death date counts at its
+                #birth year, as in the anchor branch; with no birth date, the
+                #death has to fall inside, as before.
+                #
+                #The earliest birth and the latest death on record, not the
+                #latest of each that the answer prints: 19 composers of the
+                #18th century carry two birth years, and the latest alone
+                #moved them out of it - Alexander Alyabyev was born in 1787
+                #and also, says the extract, in 1802. With both ends taken
+                #wide, everyone born or dying inside the window still passes.
+                earliest = (f"(SELECT min(e.year) FROM events e WHERE e.qid = i.qid"
+                            f" AND e.property = {_lit(BIRTH)})")
+                window = (f"(({earliest} <= {int(end)}"
+                          f" AND coalesce({died}, {born}) >= {int(start)})"
+                          f" OR ({earliest} IS NULL AND EXISTS (SELECT 1 FROM events e"
+                          f" WHERE e.qid = i.qid AND e.property = {_lit(DEATH)}"
+                          f" AND e.year BETWEEN {int(start)} AND {int(end)})))")
             if event != "alive":
                 #One date is the question, and the other one's sanity is not:
                 #someone born in 1920 was born in 1920 whatever the extract
@@ -970,7 +1014,6 @@ def _time_conditions(target: str, constraint: dict, ctes: list,
             #date landed in the window while the other says the record cannot
             #be read. A life that long is a century-precision date or a data
             #error, which is what MAX_LIFESPAN is for.
-            born, died = _year_expr(BIRTH), _year_expr(DEATH)
             return [window, f"coalesce({died} - {born}, 0) <= {MAX_LIFESPAN}"]
         return [f"EXISTS (SELECT 1 FROM events e WHERE e.qid = i.qid"
                 f" AND e.year BETWEEN {int(start)} AND {int(end)})"]
@@ -1152,6 +1195,8 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     #a ruler's title the sentence named, as its TITLE_OFFICES entry. Its
     #condition is built after the time filter, whose window it needs.
     asked_title = None
+    #and the leader group, whose offices are held to that window too
+    leader_group = False
 
     if filters.get("name"):
         name = filters["name"]
@@ -1181,6 +1226,7 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             if group is LEADER_OCCUPATIONS:
                 #a leader is either filed as one or held the office of one
                 where.append(f"({by_standing} OR {_leader_office_exists()})")
+                leader_group = True
                 #and the office is worth printing beside the answer, so the
                 #select below knows this filter ran
                 leaders = True
@@ -1241,6 +1287,11 @@ def build_sql(intent: dict, limit: int = 200) -> str:
 
     if filters.get("time_constraint"):
         where += _time_conditions(target, filters["time_constraint"], ctes, dropped)
+
+    if leader_group:
+        window = _window(filters, ctes, lived_through=True)
+        if window:
+            where.append(_leader_office_in_window(window))
 
     if asked_title:
         window = _window(filters, ctes, lived_through=True)
@@ -1455,10 +1506,13 @@ def _self_check(db_path: str) -> int:
         #"empress consort", neither of which is a leader label, so she arrives
         #by her office and by no other route - as does Ivan the Terrible, whom
         #the encyclopaedia files as torturer, politician and prison officer.
+        #Vasili IV reigned 1606-1610. This asked the 16th century while
+        #"alive" meant born or died inside the window, which he passed by
+        #being born in 1552; held to his reign, he is a leader of the 17th.
         ("a leader is found by standing",
          intent("person", occupation="leaders", location="Russia",
-                time_constraint={"type": "in_range", "start_year": 1500,
-                                 "end_year": 1599}),
+                time_constraint={"type": "in_range", "start_year": 1600,
+                                 "end_year": 1699}),
          "Vasili IV of Russia"),
         ("a leader is found by office alone",
          intent("person", occupation="leaders", location="Russia",
