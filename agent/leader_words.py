@@ -78,6 +78,35 @@ PLACE_RE = re.compile(
     rf"(?P<after>{_CAP}(?:\s+(?:of\s+(?:the\s+)?)?{_CAP})*)(?=['’]s\b|[^\w'’]|$)")
 
 
+#The ruler's words that name a group rather than one person - every plural.
+#A "name" holding one of them is the question's group, put in the wrong
+#field (see fill).
+PLURAL_WORDS = {w for w in LEADER_WORDS if (w.endswith("s") and not w.endswith("ss"))
+                or w == "heads of state"}
+
+#The place in front of the leader word, as a possessive: "England's leaders",
+#"Russia's tsars". The same capitalised run of words PLACE_RE takes after it.
+POSSESSIVE_RE = re.compile(rf"({_CAP}(?:\s+(?:of\s+(?:the\s+)?)?{_CAP})*)['’]s\s+$")
+
+#A question that asks for people rather than for a fact about one of them,
+#so it can have no answer_field (the stage 1 prompt's own rule).
+LISTING_QUESTION = re.compile(r"(?i)^\s*(who|which|show|list|give|name|provide|tell)\b")
+
+
+def _is_group(text: str) -> bool:
+    """Whether a "name" stage 1 returned is really a group of rulers: it
+    holds a plural ruler's word ("England's leaders (kings and queens)"), or
+    is a title of somewhere ("the king of France"). "King Louis XIV" is a
+    name - a singular title in front of one."""
+    text = re.sub(r"(?i)^the\s+", "", text.strip())
+    for match in LEADER_RE.finditer(text):
+        if match.group(1).lower() in PLURAL_WORDS:
+            return True
+        if match.start() == 0 and re.match(r"(?i)\s+of\s", text[match.end():]):
+            return True
+    return False
+
+
 def _mentions(filters: dict) -> tuple:
     """The names the intent already holds, lowercased: these are entities, not
     places, whatever a sentence puts in front of them. The time anchor comes
@@ -117,10 +146,26 @@ def fill(intent_text: str, sentence: str) -> tuple:
     if not isinstance(intent, dict) or not isinstance(intent.get("filters"), dict):
         return intent_text, []
     filters = intent["filters"]
-    #a named person is the answer itself, and the leader word describes them
-    if intent.get("target_type") != "person" or filters.get("name"):
+    if intent.get("target_type") != "person":
         return intent_text, []
     notes = []
+    #"Who was England leaders (kings and queens) in 19 century?" came back
+    #with name "England's leaders (kings and queens)" - and answer_field
+    #"location" - so the composer looked for one person called that and the
+    #answer was that no one is. A name holding a ruler's group is the group:
+    #it leaves the name, and the words below are read instead. Asked who or
+    #which, the question wants the people, so answer_field goes too.
+    name = filters.get("name")
+    if isinstance(name, str) and _is_group(name):
+        filters["name"] = None
+        notes.append(f"{name!r} is a group, not a name - read as occupation and location instead")
+        if intent.get("answer_field") and LISTING_QUESTION.match(sentence):
+            notes.append(f"answer_field {intent['answer_field']!r} dropped - the question asks "
+                         "for the people, not for a fact about one")
+            intent["answer_field"] = None
+    #a named person is the answer itself, and the leader word describes them
+    if filters.get("name"):
+        return intent_text, []
     #"Show me the queens of France when ..." came back from stage 1 as a
     #comparison with one entity, "queens of France" - which name resolution
     #then read as Marie of Brabant, and the composer, finding nothing to
@@ -174,7 +219,16 @@ def fill(intent_text: str, sentence: str) -> tuple:
                 return intent_text, []
             if _is_mention(place, anchor):
                 place = None
+        if not place:
+            #"England's leaders", "Russia's tsars"
+            before = POSSESSIVE_RE.search(sentence[:match.start()])
+            if before and not _is_mention(before.group(1), anchor + others):
+                place = before.group(1)
         word = match.group(1).lower()
+        #"kings and queens" is one group - the monarchs - and occupation
+        #holds one word
+        if re.search(r"(?i)\bkings?\b", sentence) and re.search(r"(?i)\bqueens?\b", sentence):
+            word = "monarchs"
         if not filters.get("occupation"):
             filters["occupation"] = word
             notes.append(f"occupation {word!r} read from the sentence - stage 1 left it empty")
@@ -191,12 +245,14 @@ def fill(intent_text: str, sentence: str) -> tuple:
 def _self_check() -> int:
     """Sentences and what each must fill; no model and no database needed."""
     def intent(occupation=None, location=None, name=None, anchor=None, related=None,
-               target="person", compare=None):
-        return json.dumps({"target_type": target, "answer_field": None, "filters": {
+               target="person", compare=None, answer_field=None, years=None):
+        time = ({"type": "relative_to_entity", "relation": "overlap", "entity_mention": anchor}
+                if anchor else {"type": "in_range", "start_year": years[0], "end_year": years[1],
+                                "precision": "century"} if years else None)
+        return json.dumps({"target_type": target, "answer_field": answer_field, "filters": {
             "name": name, "occupation": occupation, "subject": None, "location": location,
             "domain": None,
-            "time_constraint": ({"type": "relative_to_entity", "relation": "overlap",
-                                 "entity_mention": anchor} if anchor else None),
+            "time_constraint": time,
             "related_entity": ({"relation": "participates_in", "entity_mention": related}
                                if related else None),
             "compare_entities": ({"entities": compare, "aspect": "location", "relation": "same"}
@@ -246,6 +302,14 @@ def _self_check() -> int:
          intent(anchor=montaigne, compare=["queens of France"]), ("queens", "France")),
         ("Show me Russian tsars when Isaac Newton was alive?",
          intent(anchor="Isaac Newton", compare=["Russian tsars"]), ("tsars", None)),
+        #a ruler's group stage 1 put in the name - the kiosk's question
+        ("Who were England's leaders (kings and queens) in the 19th century?",
+         intent(name="England's leaders (kings and queens)", location="England",
+                answer_field="location", years=(1801, 1900)), ("monarchs", "England")),
+        ("Who was the king of France in 1600?", intent(name="king of France"), ("king", "France")),
+        ("Show me Russia's tsars in the 17th century", intent(years=(1601, 1700)), ("tsars", "Russia")),
+        #a title in front of one person's name is that person
+        ("When was King Louis XIV born?", intent(name="King Louis XIV", answer_field="time"), None),
         #a real comparison between named rulers is left alone
         ("Did the kings Louis XIV and Charles II live at the same time?",
          intent(compare=["Louis XIV", "Charles II"]), None),
@@ -262,6 +326,11 @@ def _self_check() -> int:
             filters = json.loads(text)["filters"]
             got = (filters["occupation"], filters["location"])
             ok = got == want
+            parsed = json.loads(text)
+            if filters.get("name") and _is_group(filters["name"]):
+                ok, got = False, (got, "still named:", filters["name"])
+            if parsed.get("answer_field") and LISTING_QUESTION.match(sentence) and given != text:
+                ok, got = False, (got, "answer_field kept:", parsed["answer_field"])
             compared = filters.get("compare_entities") or {}
             if any(LEADER_RE.match(e) for e in compared.get("entities") or []):
                 ok, got = False, (got, "still compared:", compared["entities"])

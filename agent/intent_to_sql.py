@@ -320,6 +320,9 @@ OCCUPATION_GROUPS = {
 #the consort's title as the ruler's, and for France only the consort's: it
 #never had a reigning queen, so "France queens when Montaigne was alive"
 #found nobody until consorts counted. The office column says which was held.
+#"Monarch" is any sovereign's title, of either sex and without consorts -
+#what a question asking for "kings and queens" wants, since one occupation
+#cannot hold both words, and what "monarchs of Russia" wants, whose are tsars.
 #A queen reads "Consort of England" too, which is all Anne of Cleves and
 #Catherine Parr hold.
 SEX_PROP = "P21"
@@ -327,6 +330,9 @@ TITLE_OFFICES = {}
 for _words, _titles, _sex, _dated, _consorts in (
         (("king", "kings"), "king|monarch|sovereign", "male", False, False),
         (("queen", "queens"), "queen|monarch|sovereign|consort", "female", False, True),
+        (("monarch", "monarchs"), "king|queen|monarch|sovereign|emperor|empress|tsar|tsarina|"
+                                  "tsaritsa|sultan|shah|pharaoh|caliph|khan|grand duke|grand prince",
+         None, False, False),
         (("emperor", "emperors"), "emperor|empress", None, False, False),
         (("empress", "empresses"), "empress|emperor", "female", False, True),
         (("tsar", "tsars", "czar", "czars"), "tsar|tsarina|tsaritsa", None, False, False),
@@ -436,6 +442,51 @@ def _word_match(column: str, value: str) -> str:
     return f"regexp_matches({column}, {_lit(pattern)})"
 
 
+#A country under the names it was ruled as at other times. "England" asked
+#about the 19th century found 3 people as leaders - Cecil Rhodes, Prime
+#Minister of the Cape Colony, among them - and no king or queen at all:
+#George III, George IV, William IV and Victoria held "monarch of the United
+#Kingdom of Great Britain and Ireland" and were citizens of it, and nothing
+#of theirs says England. Kingdom of Great Britain from 1707, United Kingdom
+#from 1801 - and each name only counts for a question reaching that year:
+#unconditional, it put James V of Scotland among the 16th century's kings of
+#England and Mary, Queen of Scots among its queens, by citizenships the
+#extract gives them under the later names. Each successor carries the year
+#it begins; a question with no period takes them all. Only England and
+#Britain so far - the wider historical-names table (Russia and Kievan Rus',
+#France and Francia...) is still to come.
+#
+#"Great Britain" is matched as words, which takes "United Kingdom of Great
+#Britain and Ireland" too. "United Kingdom" only as the whole label, the
+#modern citizenship's: as words it took "United Kingdom of Portugal, Brazil
+#and the Algarves" with it, and Maria I and John VI of Portugal into the
+#19th century's monarchs of England. The third field says which.
+PLACE_ALIASES = {
+    "england": (("Great Britain", 1707, False), ("United Kingdom", 1801, True)),
+    "britain": (("United Kingdom", 1801, True),),
+    "great britain": (("United Kingdom", 1801, True),),
+    "united kingdom": (("Great Britain", None, False),),
+}
+
+
+def _place_match(column: str, place: str, window: tuple = None) -> str:
+    """_word_match for a place, under each name PLACE_ALIASES gives it.
+
+    `window` is _window's (start, end): a later name counts only when the
+    window reaches the year it begins. A place with no other names is
+    matched exactly as before."""
+    others = PLACE_ALIASES.get(str(place).strip().lower(), ())
+    if not others:
+        return _word_match(column, place)
+    parts = [_word_match(column, place)]
+    for name, since, whole in others:
+        match = f"lower({column}) = {_lit(name.lower())}" if whole else _word_match(column, name)
+        if since is not None and window:
+            match = f"({window[1]} >= {since} AND {match})"
+        parts.append(match)
+    return "(" + " OR ".join(parts) + ")"
+
+
 def _title_match(column: str, value: str) -> str:
     """Match a work title, where the sentence rarely has it exactly right.
 
@@ -542,7 +593,7 @@ def _title_office_exists(title: tuple, window: tuple = None, place: str = None) 
     titles, sex, dated, consorts = title
     match = _office_match(titles, TITLE_OFFICE_NOT, consorts)
     if place:
-        match += f" AND {_word_match(V_LABEL, place)}"
+        match += f" AND {_place_match(V_LABEL, place, window)}"
     if dated:
         match += " AND a.start_year IS NOT NULL"
     if window:
@@ -1242,9 +1293,16 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             where.append(_attribute_exists((OCCUPATION_PROP,),
                                            _word_match(V_LABEL, filters['occupation'])))
 
+    #A place with other names needs the question's period to pick among them
+    #(PLACE_ALIASES), so it is matched after the time filter has made it;
+    #any other place here, where it always was.
+    deferred_place = None
     if filters.get("location") and not asked_title:
-        where.append(_attribute_exists(PLACE_PROPS[target],
-                                       _word_match(V_LABEL, filters['location'])))
+        if str(filters["location"]).strip().lower() in PLACE_ALIASES:
+            deferred_place = filters["location"]
+        else:
+            where.append(_attribute_exists(PLACE_PROPS[target],
+                                           _word_match(V_LABEL, filters['location'])))
 
     if filters.get("domain"):
         domain = str(filters["domain"]).lower()
@@ -1294,6 +1352,11 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     if filters.get("time_constraint"):
         where += _time_conditions(target, filters["time_constraint"], ctes, dropped)
 
+    if deferred_place:
+        where.append(_attribute_exists(PLACE_PROPS[target],
+                                       _place_match(V_LABEL, deferred_place,
+                                                    _window(filters, ctes))))
+
     if leader_group:
         window = _window(filters, ctes, lived_through=True)
         if window:
@@ -1311,7 +1374,7 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             #after her. Either is enough - the office alone would lose every
             #President of the French Republic, whose label never says France.
             place = filters["location"]
-            where.append(f"({_attribute_exists(PLACE_PROPS[target], _word_match(V_LABEL, place))}"
+            where.append(f"({_attribute_exists(PLACE_PROPS[target], _place_match(V_LABEL, place, _window(filters, ctes)))}"
                          f" OR {_title_office_exists(asked_title, window, place)})")
 
     if len(where) <= guard_only:
