@@ -23,6 +23,15 @@ Sonnets" is capitalised in the sentence, the way a title is written. Nor is
 a name without the possessive unless its other words are the creator stage 1
 already gave - "Beethoven symphonies" with Ludwig van Beethoven as creator.
 
+The same possessive in front of an ordinal is one work, named the way
+people name it and not the way the extract does: "Beethoven's Fifth" is
+stored as "Symphony No. 5", and name resolution, finding no such title,
+read it as the disco track "A Fifth of Beethoven". The extract has no
+aliases, so the nickname is rewritten into the catalogue title here - the
+kind stage 1 gave, or the one after the ordinal ("Fifth Piano Concerto"),
+or a symphony, which is what a composer's bare ordinal means - and the
+creator is kept as related_entity, so it is that composer's No. 5.
+
     python work_groups.py          # self-check, no model and no database
 """
 
@@ -35,6 +44,55 @@ POSSESSIVE = re.compile(r"^(?P<who>.+?)(?:['’]s|(?<=s)['’])\s+(?P<kind>[^'�
 
 #plurals that say "works" without saying which kind
 GENERIC_KINDS = {"works", "creations", "pieces", "compositions", "things", "titles"}
+
+
+ORDINALS = {w: n for n, w in enumerate(
+    "first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth"
+    " thirteenth fourteenth fifteenth".split(), start=1)}
+
+#"Beethoven's Fifth", "Beethoven's 9th Symphony", "Fifth Piano Concerto"
+NUMBERED = re.compile(r"^(?:(?P<who>.+?)(?:['’]s|(?<=s)['’])\s+)?"
+                      r"(?P<nth>[A-Za-z]+|\d{1,2}(?:st|nd|rd|th))"
+                      r"(?:\s+(?P<kind>[A-Za-z][A-Za-z ]*?))?$", re.IGNORECASE)
+
+
+#The kinds a composer's catalogue numbers - the word after the ordinal has to
+#be one, or "First Blood" by Stallone would become "Blood No. 1".
+NUMBERED_KINDS = {
+    "symphony", "concerto", "piano concerto", "violin concerto", "cello concerto",
+    "sonata", "piano sonata", "violin sonata", "string quartet", "quartet",
+    "piano trio", "suite", "cello suite", "orchestral suite", "partita", "mass",
+    "serenade", "nocturne", "etude", "prelude", "ballade", "scherzo", "impromptu",
+    "rhapsody", "hungarian rhapsody", "polonaise", "mazurka", "waltz", "divertimento",
+    "brandenburg concerto",
+}
+
+
+def _number(nth: str):
+    nth = nth.lower()
+    if nth in ORDINALS:
+        return ORDINALS[nth]
+    digits = re.fullmatch(r"(\d{1,2})(?:st|nd|rd|th)", nth)
+    return int(digits.group(1)) if digits else None
+
+
+def _numbered(name: str, creator, subject):
+    """(creator, title) when the name is a creator's numbered work, else None."""
+    match = NUMBERED.match(re.sub(r"(?i)^the\s+", "", name.strip()))
+    if not match:
+        return None
+    number = _number(match.group("nth"))
+    who, kind = match.group("who"), match.group("kind")
+    if number is None or not (who or creator) or not (who or kind):
+        #a bare "Fifth" with nobody's name on it is not a title anyone uses
+        return None
+    if who and creator and not set(who.lower().split()) <= set(creator.lower().split()) | {"the"}:
+        return None
+    if kind and kind.strip().lower() not in NUMBERED_KINDS:
+        return None
+    if not kind:
+        kind = subject if subject and subject.lower() not in GENERIC_KINDS else "symphony"
+    return (who or creator).strip(), f"{kind.strip().title()} No. {number}"
 
 
 def _singular(word: str) -> str:
@@ -104,6 +162,19 @@ def fill(intent_text: str, sentence: str) -> tuple:
         #linked to something else already; a second link has nowhere to go
         return intent_text, []
 
+    numbered = _numbered(filters["name"], creator, filters.get("subject"))
+    if numbered:
+        who, title = numbered
+        notes = [f"{filters['name']!r} read as {title!r} by {who!r}"
+                 " - the catalogue title the extract stores"]
+        filters["name"] = title
+        if not filters.get("subject"):
+            #what it is, so its recordings are not taken for it
+            filters["subject"] = title.rsplit(" No. ", 1)[0].lower()
+        if not creator:
+            filters["related_entity"] = {"relation": "creates", "entity_mention": who}
+        return json.dumps(intent, indent=2, ensure_ascii=False), notes
+
     split = _split(filters["name"], creator, sentence)
     if not split:
         return intent_text, []
@@ -147,8 +218,21 @@ def _self_check() -> int:
         ("Show me Bach's works", intent("Bach's works"), (None, None, "Bach")),
         ("When did Haydn write his string quartets?",
          intent("Haydn's string quartets"), (None, "string quartet", "Haydn")),
+        #a numbered work by its nickname
+        ("When was Beethoven's Fifth composed?",
+         intent("Beethoven's Fifth", "symphony", "Beethoven"), ("Symphony No. 5", "symphony", "Beethoven")),
+        ("When was Beethoven's Fifth composed?",
+         intent("Beethoven's Fifth"), ("Symphony No. 5", "symphony", "Beethoven")),
+        ("When did Beethoven write his 9th symphony?",
+         intent("9th symphony", None, beethoven), ("Symphony No. 9", "symphony", beethoven)),
+        ("When was First Blood released?", intent("First Blood", "film", "Sylvester Stallone"), None),
+        ("When was Stallone's First Blood released?", intent("Stallone's First Blood", "film"), None),
+        ("When was Rachmaninoff's Second Piano Concerto written?",
+         intent("Rachmaninoff's Second Piano Concerto"),
+         ("Piano Concerto No. 2", "piano concerto", "Rachmaninoff")),
+        ("When was the Fifth written?", intent("the Fifth"), None),
+        ("When was Shakespeare's Hamlet written?", intent("Shakespeare's Hamlet"), None),
         #titles
-        ("When was Beethoven's Fifth composed?", intent("Beethoven's Fifth"), None),
         ("When were Shakespeare's Sonnets published?", intent("Shakespeare's Sonnets"), None),
         ("When was the Mona Lisa painted?", intent("Mona Lisa", "painting"), None),
         ("When was Moonlight Sonata written?",

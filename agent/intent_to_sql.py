@@ -494,7 +494,16 @@ def _title_match(column: str, value: str) -> str:
     spaces become wildcards.
     """
     pattern = "%" + "%".join(value.split()) + "%"
-    return f"{column} ILIKE {_lit(pattern)}"
+    match = f"{column} ILIKE {_lit(pattern)}"
+    #A number is a whole number: "Symphony No. 5" must not reach "Symphony
+    #No. 15" or "No. 50", which the wildcards alone let through - Shostakovich
+    #wrote both. The ILIKE stays in front as the cheap filter.
+    numbers = [w for w in value.split() if w.isdigit()]
+    if numbers:
+        bounded = ".*".join(rf"(?:^|\D){w}(?:\D|$)" if w.isdigit() else re.escape(w)
+                            for w in value.split())
+        match = f"({match} AND regexp_matches({column}, {_lit('(?i)' + bounded)}))"
+    return match
 
 
 def _typo_budget(word: str) -> int:
@@ -1264,7 +1273,11 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     leader_group = False
 
     if filters.get("name"):
-        name = filters["name"]
+        #"When was the Mona Lisa painted?" came back named "the Mona Lisa",
+        #and no label holds "the" in front of it. The article comes off as it
+        #does for a related mention (see _related_conditions); a title that
+        #owns its article loses nothing, "Beatles" still finds "The Beatles".
+        name = re.sub(r"(?i)^(the|a|an)\s+", "", str(filters["name"]).strip()) or filters["name"]
         where.append(f"({_title_match(I_LABEL, name)}"
                      f" OR {_title_match('i.label_ru', name)})")
 
@@ -1349,6 +1362,13 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             #"When was the Mona Lisa painted?" arrives with subject "painting",
             #which the item itself does not claim.
             dropped.append(f"subject {subject!r} beside an explicit name")
+            #The kind still says what the name is not: "Symphony No. 5" by
+            #Beethoven is also a 2018 album and its four tracks, each titled
+            #after the symphony, and the question is about the symphony. A
+            #named album ("Abbey Road", subject none or "album") keeps its
+            #recordings.
+            if not any(re.search(rf"(?i)\b{w}\b", subject) for w in RECORDING_WORDS):
+                where.append(_not_a_recording())
         else:
             where.append(_subject_exists(subject))
             if not any(re.search(rf"(?i)\b{w}\b", subject) for w in RECORDING_WORDS):
