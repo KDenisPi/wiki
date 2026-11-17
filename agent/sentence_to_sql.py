@@ -72,6 +72,7 @@ from answer_text import describe as describe_answer  # noqa: E402 - sibling modu
 from fix_sentence import fix as fix_sentence  # noqa: E402 - sibling module
 from intent_to_sql import NOTHING_TO_FILTER, Unsupported, build_sql  # noqa: E402 - sibling module
 from leader_words import fill as fill_leader_words  # noqa: E402 - sibling module
+from work_groups import fill as fill_work_groups  # noqa: E402 - sibling module
 from resolve_names import resolve as resolve_names  # noqa: E402 - sibling module
 #imported for compare_models.py and eval_stage1.py too, which take it from here
 from wiki_db import connect_db  # noqa: E402,F401 - sibling module
@@ -471,7 +472,16 @@ def stage1(args: argparse.Namespace, sentence: str) -> dict:
         logger.info("stage1: %s", note)
     if filled:
         logger.info("stage1 intent (leader words filled):\n%s", intent)
-    return {"intent": intent, "notes": list(filled)}
+
+    #"Beethoven's symphonies" taken for a title: work_groups has the question
+    #it emptied. Before the names are resolved too - resolution would turn
+    #the possessive into a title the extract happens to carry.
+    intent, grouped = fill_work_groups(intent, sentence)
+    for note in grouped:
+        logger.info("stage1: %s", note)
+    if grouped:
+        logger.info("stage1 intent (work group read):\n%s", intent)
+    return {"intent": intent, "notes": list(filled) + list(grouped)}
 
 
 def resolve(args: argparse.Namespace, intent: str) -> dict:
