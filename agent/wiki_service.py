@@ -50,6 +50,11 @@ pipeline's own options pass through - see sentence_to_sql.py):
 
 Unlike the command line, nothing is written to a training log unless
 --training-log names one.
+
+It logs to the console and to logs/wiki_service.log in this repo, rotated
+daily with a week kept (--log-file, --log-backup-count), the same way the
+AI_agents services log. In Docker the repo is bind-mounted, so the file
+outlives the container.
 """
 
 import argparse
@@ -60,6 +65,7 @@ import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 import sentence_to_sql as pipeline
@@ -382,6 +388,10 @@ def make_handler(service: WikiService, slots: threading.BoundedSemaphore,
     return Handler
 
 
+#the repo's logs/, whatever directory the service is started from
+DEFAULT_LOG_FILE = Path(__file__).resolve().parent.parent / "logs" / "wiki_service.log"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="The wiki question pipeline over HTTP - see the module docstring. "
@@ -395,17 +405,22 @@ def main() -> None:
                         help="questions answered at the same time")
     parser.add_argument("--queue-timeout", type=float, default=120.0,
                         help="seconds a request waits for a free slot before a 503")
-    parser.add_argument("--log-file", default=None, help="also log to this file")
+    parser.add_argument("--log-file", default=str(DEFAULT_LOG_FILE),
+                        help="also log to this file, rotated daily; '' logs to the "
+                             "console only (default: %(default)s)")
+    parser.add_argument("--log-backup-count", type=int, default=7,
+                        help="rotated log files kept, 0 keeps all (default: %(default)s)")
     own, rest = parser.parse_known_args()
 
     args = pipeline.build_parser().parse_args(rest)
     if "--training-log" not in rest:
         args.training_log = None
 
-    handlers = [logging.StreamHandler()]
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
     if own.log_file:
         Path(own.log_file).parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(own.log_file))
+        handlers.append(TimedRotatingFileHandler(own.log_file, when="D", interval=1,
+                                                 backupCount=own.log_backup_count))
     logging.basicConfig(level=logging.INFO, handlers=handlers,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 

@@ -17,6 +17,7 @@ __pycache__/
 # particular database, so they go stale the moment either changes - the numbers
 # worth keeping live in commit messages instead.
 *.log
+logs/
 cache/
 agent/*.jsonl
 agent/*.summary.json

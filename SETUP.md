@@ -198,6 +198,12 @@ At most 50 rows come back (`row_count` is the total) and two questions run at
 once (`--max-rows`, `--concurrency`). Unlike the command line it writes no
 training log unless `--training-log` is passed.
 
+Its log is `logs/wiki_service.log` in this repo: everything the pipeline logs
+(each step's reply, the SQL, every row, the answer), rotated daily with a week
+kept (`--log-file`, `--log-backup-count`), the same as the AI_agents services'
+`logs/`. `docker logs wiki-server` shows the same lines, but only since the
+container was last created.
+
 It runs in Docker as `wiki-server`, like the rest of the AI_agents system.
 The image holds Python and the two packages only; the code, the AI_agents
 repo it imports `OllamaClient` from, and the database are bind-mounted, so a
