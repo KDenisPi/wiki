@@ -483,6 +483,11 @@ def step0(args: argparse.Namespace, sentence: str) -> dict:
 
     Returns the question as typed, the question the stages after this one
     read, and fix_sentence's note on what it did or why it did not."""
+    #Both forms, every time and next to each other: stage 0 rewrites
+    #numbers ("at 1803" came back as "at the 19th") and only the rewrite
+    #used to be logged, so reading the log afterwards, the question the
+    #user asked could not be told from the one the model made of it.
+    logger.info("question as typed: %s", sentence)
     question_used, note = sentence, None
     if args.fix_grammar:
         context0 = Path(args.context0).read_text()
@@ -494,8 +499,8 @@ def step0(args: argparse.Namespace, sentence: str) -> dict:
             lambda text: run_stage(client0, "stage0", _fill(context0, sentence=text)))
         if note:
             logger.info("stage0: %s", note)
-        if question_used != sentence:
-            logger.info("stage0 question: %s", question_used)
+    logger.info("question used: %s%s", question_used,
+                "" if question_used != sentence else " (unchanged)")
     return {"question": sentence, "question_used": question_used, "step0_note": note}
 
 
