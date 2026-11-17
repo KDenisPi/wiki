@@ -57,6 +57,7 @@ skip it, or --eval-frac/--split-seed to change the held-out share/draw.
 import argparse
 import json
 import logging
+import re
 import sys
 import threading
 import time
@@ -161,8 +162,61 @@ def _extract_intent_json(text: str) -> str:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return text[start : i + 1]
+                return _alternatives_as_list(text[start : i + 1])
     return text.strip()
+
+
+_JSON_STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
+_ALTERNATIVE = re.compile(r"\s*(?:\||\bor\b)\s*")
+
+
+def _alternatives_as_list(text: str) -> str:
+    """Rewrite `"a" | "b"` between JSON strings as the list `["a", "b"]`.
+
+    Asked "What revolutions or wars were in France between 1780 and 1810?",
+    stage 1 answered `"subject": "revolution" | "war"` - two kinds, written
+    the way a type is, and not JSON. The whole intent was lost on that one
+    field and the reply was "I could not make sense of that question". The
+    two kinds are what was asked, so they are kept as a list, which the
+    composer reads as either one. `or` between the strings is read the same.
+
+    Valid JSON is returned untouched: the strings are walked from the start,
+    so a `|` inside a string is never taken for one between strings."""
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        pass
+    pieces, pos = [], 0
+    for m in _JSON_STRING.finditer(text):
+        pieces.append((False, text[pos:m.start()]))
+        pieces.append((True, m.group()))
+        pos = m.end()
+    pieces.append((False, text[pos:]))
+    #(is_string, text) alternate gap, string, gap, ... - so a run of
+    #alternatives is string, separator gap, string, ...
+    out, i = [], 0
+    while i < len(pieces):
+        is_string, piece = pieces[i]
+        if not is_string:
+            out.append(piece)
+            i += 1
+            continue
+        run = [piece]
+        while (i + 2 < len(pieces) and _ALTERNATIVE.fullmatch(pieces[i + 1][1])
+               and pieces[i + 2][0]):
+            run.append(pieces[i + 2][1])
+            i += 2
+        out.append(f"[{', '.join(run)}]" if len(run) > 1 else piece)
+        i += 1
+    repaired = "".join(out)
+    try:
+        json.loads(repaired)
+    except json.JSONDecodeError:
+        #broken some other way too - leave the reply as the model wrote it,
+        #so the log and the error both describe that
+        return text
+    return repaired
 
 
 def _intent_text(path: Path) -> str:

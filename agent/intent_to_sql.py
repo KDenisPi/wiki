@@ -1365,7 +1365,11 @@ def build_sql(intent: dict, limit: int = 200) -> str:
     if filters.get("subject"):
         #the specific kind of thing asked for - "symphonies" rather than
         #"musical works". See _subject_exists for why it is matched two ways.
-        subject = str(filters["subject"])
+        #A list is two kinds asked together - "revolutions or wars" - and an
+        #item of either kind answers it.
+        raw = filters["subject"]
+        kinds = [str(k) for k in raw if k] if isinstance(raw, list) else [str(raw)]
+        subject = " or ".join(kinds)
         if target == "person":
             #What kind of thing a person is has one answer, "human", and the
             #question never means that. Stage 1 fills the field anyway when the
@@ -1387,7 +1391,8 @@ def build_sql(intent: dict, limit: int = 200) -> str:
             if not any(re.search(rf"(?i)\b{w}\b", subject) for w in RECORDING_WORDS):
                 where.append(_not_a_recording())
         else:
-            where.append(_subject_exists(subject))
+            where.append(_subject_exists(kinds[0]) if len(kinds) == 1 else
+                         "(" + "\n       OR ".join(_subject_exists(k) for k in kinds) + ")")
             if not any(re.search(rf"(?i)\b{w}\b", subject) for w in RECORDING_WORDS):
                 where.append(_not_a_recording())
 

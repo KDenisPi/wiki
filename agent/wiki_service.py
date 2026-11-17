@@ -127,9 +127,11 @@ INTENT_SCHEMA = {
                                    "matched against the offices people actually held.",
                 },
                 "subject": {
-                    "type": ["string", "null"],
+                    "type": ["string", "array", "null"],
+                    "items": {"type": "string"},
                     "description": "Work and event targets only: the kind of thing, singular, in "
-                                   "the question's words ('symphony', 'novel', 'battle').",
+                                   "the question's words ('symphony', 'novel', 'battle'); a list "
+                                   "when several are asked for (['revolution', 'war']).",
                 },
                 "location": {
                     "type": ["string", "null"],

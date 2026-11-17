@@ -100,7 +100,8 @@ def _numbered(name: str, creator, subject):
     if kind and kind.strip().lower() not in NUMBERED_KINDS:
         return None
     if not kind:
-        kind = subject if subject and subject.lower() not in GENERIC_KINDS else "symphony"
+        kind = (subject if isinstance(subject, str) and subject.lower() not in GENERIC_KINDS
+                else "symphony")
     return (who or creator).strip(), f"{kind.strip().title()} No. {number}"
 
 
