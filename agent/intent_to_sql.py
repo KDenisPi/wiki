@@ -1152,11 +1152,28 @@ def _related_conditions(target: str, related: dict) -> list:
         if target == "person":
             #this person made the named work: the attribute row sits on the
             #work and points back at the person
+            #
+            #The work is one work. "Who painted the Mona Lisa?" matched every
+            #title holding the words - "Mona Lisa Overdrive", "The Ballad of
+            #Mona Lisa", three songs called "Mona Lisa" - and answered with
+            #51 people, Leonardo among them. Of the works that have a
+            #creator, the one meant is an exact title before a title that
+            #only contains the words, and the best known of those: Leonardo's
+            #painting, 143 sitelinks, against 11 for Nat King Cole's single.
             plist = ", ".join(_lit(p) for p in CREATOR_PROPS)
+            w2_label = 'w2."label"'
+            exact = (f"lower(regexp_replace({w2_label}, '(?i)^(the|a|an)\\s+', ''))"
+                     f" = {_lit(mention.lower())}")
+            work = (f"(SELECT w2.qid FROM items w2"
+                    f" LEFT JOIN sites s2 ON s2.qid = w2.qid"
+                    f" WHERE {_title_match(w2_label, mention)}"
+                    f" AND EXISTS (SELECT 1 FROM attributes a2 WHERE a2.qid = w2.qid"
+                    f" AND a2.property IN ({plist}))"
+                    f" ORDER BY {exact} DESC, coalesce(s2.sitelinks, 0) DESC, w2.qid"
+                    f" LIMIT 1)")
             return [f"EXISTS (SELECT 1 FROM attributes a"
-                    f" JOIN items w ON w.qid = a.qid"
                     f" WHERE a.\"value\" = i.qid AND a.property IN ({plist})"
-                    f" AND {_title_match(W_LABEL, mention)})"]
+                    f" AND a.qid = {work})"]
         raise Unsupported(f"creates with target {target!r}")
 
     if relation == "participates_in":

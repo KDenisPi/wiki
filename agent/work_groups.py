@@ -32,6 +32,15 @@ kind stage 1 gave, or the one after the ordinal ("Fifth Piano Concerto"),
 or a symphony, which is what a composer's bare ordinal means - and the
 creator is kept as related_entity, so it is that composer's No. 5.
 
+And a question about who made a work can come back from stage 1 already
+answered. Asked "Who composed The Magic Flute?" it returned works created by
+Mozart - the answer it guessed, in place of the work the question names -
+and the composer listed Mozart's 22 operas; "Who wrote War and Peace?" came
+back as novels by Tolstoy and listed Aleksey Tolstoy's books too. A "who
+made" question whose intent asks for works by someone the sentence never
+mentions is put back the way it was asked: the person who created the work
+named after the verb.
+
     python work_groups.py          # self-check, no model and no database
 """
 
@@ -95,6 +104,35 @@ def _numbered(name: str, creator, subject):
     return (who or creator).strip(), f"{kind.strip().title()} No. {number}"
 
 
+#"Who composed The Magic Flute?" - the verb and the work after it. Only the
+#verbs the composer's creator properties answer (author, composer, creator,
+#performer, lyricist): the extract holds no director, producer or
+#screenwriter rows, so "who directed" would only reach the novel's author.
+WHO_MADE = re.compile(
+    r"^\s*who\s+(?:(?:first|originally|really|actually)\s+)?"
+    r"(?:wrote|composed|painted|created|made|authored|sculpted|drew|sang|recorded|"
+    r"penned|is\s+the\s+(?:author|composer|painter|creator)\s+of|"
+    r"was\s+the\s+(?:author|composer|painter|creator)\s+of)\s+"
+    r"(?P<work>.+?)\s*[?.!]*\s*$", re.IGNORECASE)
+
+
+def _who_made(intent: dict, sentence: str):
+    """The work a "who made X" question names, when stage 1 answered it
+    instead of asking it; None otherwise."""
+    asked = WHO_MADE.match(sentence)
+    if not asked or intent.get("target_type") != "work":
+        return None
+    related = intent["filters"].get("related_entity")
+    if not isinstance(related, dict) or related.get("relation") != "creates":
+        return None
+    mention = str(related.get("entity_mention") or "")
+    words = [w for w in re.findall(r"[^\W\d_]{3,}", mention)]
+    if not words or any(re.search(rf"(?i)\b{re.escape(w)}\b", sentence) for w in words):
+        #the creator is the sentence's own - "Who wrote Mozart's operas?"
+        return None
+    return asked.group("work").strip(), mention
+
+
 def _singular(word: str) -> str:
     if word.endswith("ies") and len(word) > 4:
         return word[:-3] + "y"
@@ -152,7 +190,19 @@ def fill(intent_text: str, sentence: str) -> tuple:
     if not isinstance(intent, dict) or intent.get("target_type") != "work":
         return intent_text, []
     filters = intent.get("filters")
-    if not isinstance(filters, dict) or not isinstance(filters.get("name"), str):
+    if not isinstance(filters, dict):
+        return intent_text, []
+    turned = _who_made(intent, sentence)
+    if turned:
+        work, guessed = turned
+        intent["target_type"] = "person"
+        intent["answer_field"] = None
+        intent["filters"] = {key: None for key in filters}
+        intent["filters"]["related_entity"] = {"relation": "creates", "entity_mention": work}
+        return json.dumps(intent, indent=2, ensure_ascii=False), [
+            f"stage 1 answered the question with works by {guessed!r};"
+            f" asked instead who created {work!r}"]
+    if not isinstance(filters.get("name"), str):
         return intent_text, []
     related = filters.get("related_entity")
     creator = None
@@ -245,6 +295,36 @@ def _self_check() -> int:
         ("not json", "not json", None),
     ]
     failures = 0
+    #"who made X" answered by stage 1: (sentence, stage 1's intent, the work asked about)
+    def works_by(creator, subject, target="work"):
+        return json.dumps({"target_type": target, "answer_field": None, "filters": {
+            "name": None, "occupation": None, "subject": subject, "location": None,
+            "domain": "music", "time_constraint": None,
+            "related_entity": {"relation": "creates", "entity_mention": creator},
+            "compare_entities": None}})
+    turned = [
+        ("Who composed The Magic Flute?", works_by("Mozart", "opera"), "The Magic Flute"),
+        ("Who wrote War and Peace?", works_by("Tolstoy", "novel"), "War and Peace"),
+        ("who is the author of Don Quixote", works_by("Miguel de Cervantes", "novel"),
+         "Don Quixote"),
+        #asked the right way round, or the creator is in the sentence
+        ("Who painted the Mona Lisa?", works_by("Mona Lisa", None, "person"), None),
+        ("Who wrote Mozart's operas?", works_by("Mozart", "opera"), None),
+        ("Which operas did Mozart compose?", works_by("Mozart", "opera"), None),
+    ]
+    for sentence, given, want in turned:
+        text, notes = fill(given, sentence)
+        if want is None:
+            ok = text == given and not notes
+            got = "unchanged" if ok else text
+        else:
+            parsed = json.loads(text)
+            related = parsed["filters"]["related_entity"] or {}
+            got = (parsed["target_type"], related.get("entity_mention"), parsed["filters"]["subject"])
+            ok = got == ("person", want, None)
+        print(f"{'ok  ' if ok else 'FAIL'} {sentence!r}: {got}"
+              + (f"  [{'; '.join(notes)}]" if notes else ""))
+        failures += not ok
     for sentence, given, want in cases:
         text, notes = fill(given, sentence)
         if want is None:
